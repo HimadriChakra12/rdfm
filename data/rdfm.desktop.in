@@ -1,9 +1,12 @@
 [Desktop Entry]
 Type=Application
 Icon=system-file-manager
-_Name=PCMan File Manager
-_GenericName=File Manager
-_Comment=Browse the file system and manage the files
+Name=RDFM
+Name[bn]=আরডিএফএম
+GenericName=File Manager
+GenericName[bn]=ফাইল ম্যানেজার
+Comment=Browse the file system and manage the files
+Comment[bn]=ফাইল সিস্টেম ব্রাউজ করুন এবং ফাইল পরিচালনা করুন
 Categories=GTK;System;Core;FileTools;FileManager;
 Exec=rdfm %U
 StartupNotify=true

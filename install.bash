@@ -1,4 +1,4 @@
 ./autogen.sh
-./configure && cd src
+./configure
 make
 sudo make install

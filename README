@@ -1,2 +1,9 @@
-Compile the program with configure option --sysconfdir=/etc
+# rdfm
 
+A more precised gtk3(hardcoded) fork of pcmanfm.
+
+- deps:
+```
+libfm
+libfm-gtk3
+```
