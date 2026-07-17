@@ -377,12 +377,72 @@ static void on_folder_view_sel_changed(FmFolderView* fv, gint n_sel, FmMainWin* 
 
 static gboolean on_view_key_press_event(FmFolderView* fv, GdkEventKey* evt, FmMainWin* win)
 {
-    switch(evt->keyval)
+    /* vim-style navigation keys (active when folder view has focus) */
+    int modifier = evt->state & gtk_accelerator_get_default_mod_mask();
+
+    if(modifier == 0)
     {
-    case GDK_KEY_BackSpace:
-        on_go_up(NULL, win);
-        break;
+        switch(evt->keyval)
+        {
+        case GDK_KEY_BackSpace:
+            on_go_up(NULL, win);
+            return TRUE;
+
+        /* j/k: move selection down/up (synthesise arrow key) */
+        case GDK_KEY_j:
+        {
+            GdkEvent *synth = gdk_event_new(GDK_KEY_PRESS);
+            synth->key.window    = g_object_ref(evt->window);
+            synth->key.send_event= TRUE;
+            synth->key.time      = evt->time;
+            synth->key.state     = 0;
+            synth->key.keyval    = GDK_KEY_Down;
+            synth->key.hardware_keycode = 0;
+            synth->key.group     = 0;
+            gtk_main_do_event(synth);
+            gdk_event_free(synth);
+            return TRUE;
+        }
+        case GDK_KEY_k:
+        {
+            GdkEvent *synth = gdk_event_new(GDK_KEY_PRESS);
+            synth->key.window    = g_object_ref(evt->window);
+            synth->key.send_event= TRUE;
+            synth->key.time      = evt->time;
+            synth->key.state     = 0;
+            synth->key.keyval    = GDK_KEY_Up;
+            synth->key.hardware_keycode = 0;
+            synth->key.group     = 0;
+            gtk_main_do_event(synth);
+            gdk_event_free(synth);
+            return TRUE;
+        }
+
+        /* h/l: history back / forward */
+        case GDK_KEY_h:
+            on_go_back(NULL, win);
+            return TRUE;
+        case GDK_KEY_l:
+            on_go_forward(NULL, win);
+            return TRUE;
+
+        default:
+            break;
+        }
     }
+    else if(modifier == GDK_SHIFT_MASK)
+    {
+        switch(evt->keyval)
+        {
+        /* Shift+H: go home */
+        case GDK_KEY_H:
+            on_go_home(NULL, win);
+            return TRUE;
+        default:
+            break;
+        }
+    }
+
     return FALSE;
 }
 

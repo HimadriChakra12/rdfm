@@ -22,4 +22,4 @@ stamp-*
 *.ui
 data/ui/about.glade
 *.gmo
-src/pcmanfm
+src/rdfm

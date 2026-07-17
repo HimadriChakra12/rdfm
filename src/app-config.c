@@ -920,27 +920,22 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
     char *path;
     GKeyFile* kf = g_key_file_new();
 
-    if(!name || !*name) /* if profile name is not provided, use 'default' */
-        name = "default";
+    /* profile name is intentionally ignored: config lives at a flat
+     * rdfm/rdfm.conf with no per-profile subdirectory. */
+    (void)name;
 
-    /* load system-wide settings */
+    /* load system-wide settings from /etc/xdg/rdfm/rdfm.conf (etc.) */
     dirs = g_get_system_config_dirs();
     for(dir=dirs;*dir;++dir)
     {
-        path = g_build_filename(*dir, "rdfm", name, "rdfm.conf", NULL);
+        path = g_build_filename(*dir, "rdfm", "rdfm.conf", NULL);
         if(g_key_file_load_from_file(kf, path, 0, NULL))
             fm_app_config_load_from_key_file(cfg, kf);
         g_free(path);
     }
 
-    /* override system-wide settings with user-specific configuration.
-     * NOTE: there is intentionally no legacy flat-file migration here
-     * (unlike upstream pcmanfm's pcmanfm.conf -> pcmanfm/default/pcmanfm.conf
-     * migration) since that old_name/name pair collided once both were
-     * renamed to "rdfm", causing the profile file to get silently moved
-     * out from under itself on every load. This is the single, unambiguous
-     * location rdfm reads from and writes to. */
-    path = g_build_filename(g_get_user_config_dir(), "rdfm", name, "rdfm.conf", NULL);
+    /* override with user config: ~/.config/rdfm/rdfm.conf */
+    path = g_build_filename(g_get_user_config_dir(), "rdfm", "rdfm.conf", NULL);
     if(g_key_file_load_from_file(kf, path, 0, NULL))
         fm_app_config_load_from_key_file(cfg, kf);
 
@@ -953,7 +948,7 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
 
 #if !FM_CHECK_VERSION(1, 2, 0)
     fc_cache = g_key_file_new();
-    path = g_build_filename(g_get_user_config_dir(), "rdfm", name,
+    path = g_build_filename(g_get_user_config_dir(), "rdfm",
                             "dir-settings.conf", NULL);
     g_key_file_load_from_file(fc_cache, path, 0, NULL);
     g_free(path);
@@ -1203,7 +1198,8 @@ void fm_app_config_save_profile(FmAppConfig* cfg, const char* name)
      * the entire [desktop] section. Simplest fix: never write it. */
     (void)cfg;
 
-    dir_path = g_build_filename(g_get_user_config_dir(), "rdfm", name, NULL);
+    /* flat layout: ~/.config/rdfm/ (no profile subdir) */
+    dir_path = g_build_filename(g_get_user_config_dir(), "rdfm", NULL);
 #if FM_CHECK_VERSION(1, 2, 0)
     /* per-folder view settings cache (.directory-based) is a separate
      * concern from rdfm.conf and is left intact */
