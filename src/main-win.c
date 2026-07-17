@@ -753,6 +753,7 @@ static void fm_main_win_init(FmMainWin *win)
     gtk_window_group_add_window(win->win_group, GTK_WINDOW(win));
 
     gtk_window_set_icon_name(GTK_WINDOW(win), "folder");
+    gtk_style_context_add_class(gtk_widget_get_style_context(GTK_WIDGET(win)), "rdfm-main-win");
 
     vbox = (GtkBox*)gtk_vbox_new(FALSE, 0);
 
@@ -906,6 +907,7 @@ static void fm_main_win_init(FmMainWin *win)
 
     menubar = gtk_ui_manager_get_widget(ui, "/menubar");
     win->toolbar = GTK_TOOLBAR(gtk_ui_manager_get_widget(ui, "/toolbar"));
+    gtk_style_context_add_class(gtk_widget_get_style_context(GTK_WIDGET(win->toolbar)), "rdfm-toolbar");
     /* FIXME: should make these optional */
     gtk_toolbar_set_icon_size(win->toolbar, GTK_ICON_SIZE_SMALL_TOOLBAR);
     gtk_toolbar_set_style(win->toolbar, GTK_TOOLBAR_ICONS);
@@ -945,6 +947,7 @@ static void fm_main_win_init(FmMainWin *win)
 
     /* the location bar */
     win->location = fm_path_entry_new();
+    gtk_style_context_add_class(gtk_widget_get_style_context(GTK_WIDGET(win->location)), "rdfm-pathbar");
     g_signal_connect(win->location, "activate", G_CALLBACK(on_location_activate), win);
     if(geteuid() == 0) /* if we're using root, Give the user some warnings */
     {
@@ -959,6 +962,7 @@ static void fm_main_win_init(FmMainWin *win)
     }
 
     win->path_bar = fm_path_bar_new();
+    gtk_style_context_add_class(gtk_widget_get_style_context(GTK_WIDGET(win->path_bar)), "rdfm-pathbar");
     g_signal_connect(win->path_bar, "chdir", G_CALLBACK(on_path_bar_chdir), win);
     pathbox = (GtkBox*)gtk_hbox_new(FALSE, 0);
     gtk_box_pack_start(pathbox, GTK_WIDGET(win->location), TRUE, TRUE, 0);

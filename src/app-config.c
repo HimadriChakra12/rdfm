@@ -30,8 +30,49 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 #include "tab-page.h"
+
+/* Track the on-disk profile config file we last loaded from, and its
+ * mtime at load time. This lets save_profile() detect "the file was
+ * edited by hand after we loaded it" and refuse to blindly clobber
+ * those edits with whatever is currently in memory. */
+static char *loaded_profile_path = NULL;
+static time_t loaded_profile_mtime = 0;
+
+static time_t fm_app_config_stat_mtime(const char *path)
+{
+    struct stat st;
+    if (path && stat(path, &st) == 0)
+        return st.st_mtime;
+    return 0;
+}
+
+/* GKeyFile has no inline-comment support, so a value like
+ * "#1a1a2e   # some note" would otherwise be handed to gdk_rgba_parse()
+ * verbatim and silently fail to parse. This strips a trailing "# ..."
+ * comment (if any) before parsing. Returns TRUE and fills *out on
+ * success; leaves *out untouched and returns FALSE if the key is
+ * absent, empty, or doesn't parse as a color. */
+static gboolean fm_key_file_get_rgba_stripped(GKeyFile *kf, const char *group,
+                                              const char *key, GdkRGBA *out)
+{
+    char *tmp = g_key_file_get_string(kf, group, key, NULL);
+    gboolean ok = FALSE;
+
+    if (tmp)
+    {
+        char *hash = strchr(tmp, '#');
+        if (hash && hash != tmp)
+            *hash = '\0';
+        g_strchomp(tmp);
+        if (tmp[0] && gdk_rgba_parse(out, tmp))
+            ok = TRUE;
+        g_free(tmp);
+    }
+    return ok;
+}
 
 #if !FM_CHECK_VERSION(1, 2, 0)
 typedef struct
@@ -467,6 +508,7 @@ static void fm_app_config_finalize(GObject *object)
 #endif
     g_free(cfg->icon_theme);
     g_free(cfg->gtk_theme);
+    g_free(cfg->app_font);
 
     G_OBJECT_CLASS(fm_app_config_parent_class)->finalize(object);
 }
@@ -499,6 +541,15 @@ static void fm_app_config_init(FmAppConfig *cfg)
     cfg->desktop_section.desktop_shadow.alpha = 1.0;
     cfg->icon_theme = NULL;  /* system default */
     cfg->gtk_theme  = NULL;  /* system default */
+    cfg->app_bg_set = FALSE;
+    cfg->app_fg_set = FALSE;
+    cfg->app_font = NULL;
+    cfg->toolbar_bg_set = FALSE;
+    cfg->toolbar_fg_set = FALSE;
+    cfg->pathbar_bg_set = FALSE;
+    cfg->pathbar_fg_set = FALSE;
+    cfg->view_bg_set = FALSE;
+    cfg->view_fg_set = FALSE;
     cfg->win_width = 640;
     cfg->win_height = 480;
     cfg->splitter_pos = 150;
@@ -635,18 +686,34 @@ void fm_app_config_load_desktop_config(GKeyFile *kf, const char *group, FmDeskto
     tmp = g_key_file_get_string(kf, group, "desktop_bg", NULL);
     if(tmp)
     {
+        char *hash = strchr(tmp, '#');
+        /* strip a trailing "# comment" -- GKeyFile doesn't support
+         * inline comments, so without this a value like
+         * "#1a1a2e   # background fill" gets parsed as one literal
+         * string and gdk_rgba_parse() silently fails on it. */
+        if (hash && hash != tmp)
+            *hash = '\0';
+        g_strchomp(tmp);
         gdk_rgba_parse(&cfg->desktop_bg, tmp);
         g_free(tmp);
     }
     tmp = g_key_file_get_string(kf, group, "desktop_fg", NULL);
     if(tmp)
     {
+        char *hash = strchr(tmp, '#');
+        if (hash && hash != tmp)
+            *hash = '\0';
+        g_strchomp(tmp);
         gdk_rgba_parse(&cfg->desktop_fg, tmp);
         g_free(tmp);
     }
     tmp = g_key_file_get_string(kf, group, "desktop_shadow", NULL);
     if(tmp)
     {
+        char *hash = strchr(tmp, '#');
+        if (hash && hash != tmp)
+            *hash = '\0';
+        g_strchomp(tmp);
         gdk_rgba_parse(&cfg->desktop_shadow, tmp);
         g_free(tmp);
     }
@@ -822,6 +889,29 @@ void fm_app_config_load_from_key_file(FmAppConfig* cfg, GKeyFile* kf)
         g_free(cfg->gtk_theme);
         cfg->gtk_theme = NULL;
     }
+
+    /* app window chrome colors -- applied to the actual FmMainWin windows
+     * via CSS, independent of the X11-only desktop/wallpaper manager.
+     * Each per-area color falls back to app_bg/app_fg when unset. */
+    cfg->app_bg_set = fm_key_file_get_rgba_stripped(kf, "ui", "app_bg", &cfg->app_bg);
+    cfg->app_fg_set = fm_key_file_get_rgba_stripped(kf, "ui", "app_fg", &cfg->app_fg);
+    cfg->toolbar_bg_set = fm_key_file_get_rgba_stripped(kf, "ui", "toolbar_bg", &cfg->toolbar_bg);
+    cfg->toolbar_fg_set = fm_key_file_get_rgba_stripped(kf, "ui", "toolbar_fg", &cfg->toolbar_fg);
+    cfg->pathbar_bg_set = fm_key_file_get_rgba_stripped(kf, "ui", "pathbar_bg", &cfg->pathbar_bg);
+    cfg->pathbar_fg_set = fm_key_file_get_rgba_stripped(kf, "ui", "pathbar_fg", &cfg->pathbar_fg);
+    cfg->view_bg_set = fm_key_file_get_rgba_stripped(kf, "ui", "view_bg", &cfg->view_bg);
+    cfg->view_fg_set = fm_key_file_get_rgba_stripped(kf, "ui", "view_fg", &cfg->view_fg);
+
+    g_free(cfg->app_font);
+    tmp = g_key_file_get_string(kf, "ui", "app_font", NULL);
+    if (tmp)
+    {
+        char *hash = strchr(tmp, '#');
+        if (hash && hash != tmp)
+            *hash = '\0';
+        g_strchomp(tmp);
+    }
+    cfg->app_font = (tmp && tmp[0]) ? tmp : (g_free(tmp), NULL);
 }
 
 void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
@@ -829,13 +919,9 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
     const gchar * const *dirs, * const *dir;
     char *path;
     GKeyFile* kf = g_key_file_new();
-    const char* old_name = name;
 
     if(!name || !*name) /* if profile name is not provided, use 'default' */
-    {
         name = "default";
-        old_name = "rdfm"; /* for compatibility with old versions. */
-    }
 
     /* load system-wide settings */
     dirs = g_get_system_config_dirs();
@@ -847,35 +933,21 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
         g_free(path);
     }
 
-    /* override system-wide settings with user-specific configuration */
-
-    /* For backward compatibility, try to load old config file and
-     * then migrate to new location */
-    path = g_strconcat(g_get_user_config_dir(), "/rdfm/", old_name, ".conf", NULL);
-    if(G_UNLIKELY(g_key_file_load_from_file(kf, path, 0, NULL)))
-    {
-        char* new_dir;
-        /* old config file is found, migrate to new profile format */
+    /* override system-wide settings with user-specific configuration.
+     * NOTE: there is intentionally no legacy flat-file migration here
+     * (unlike upstream pcmanfm's pcmanfm.conf -> pcmanfm/default/pcmanfm.conf
+     * migration) since that old_name/name pair collided once both were
+     * renamed to "rdfm", causing the profile file to get silently moved
+     * out from under itself on every load. This is the single, unambiguous
+     * location rdfm reads from and writes to. */
+    path = g_build_filename(g_get_user_config_dir(), "rdfm", name, "rdfm.conf", NULL);
+    if(g_key_file_load_from_file(kf, path, 0, NULL))
         fm_app_config_load_from_key_file(cfg, kf);
 
-        /* create the profile dir */
-        new_dir = g_build_filename(g_get_user_config_dir(), "rdfm", name, NULL);
-        if(g_mkdir_with_parents(new_dir, 0700) == 0)
-        {
-            /* move the old config file to new location */
-            char* new_path = g_build_filename(new_dir, "rdfm.conf", NULL);
-            rename(path, new_path);
-            g_free(new_path);
-        }
-        g_free(new_dir);
-    }
-    else
-    {
-        g_free(path);
-        path = g_build_filename(g_get_user_config_dir(), "rdfm", name, "rdfm.conf", NULL);
-        if(g_key_file_load_from_file(kf, path, 0, NULL))
-            fm_app_config_load_from_key_file(cfg, kf);
-    }
+    g_free(loaded_profile_path);
+    loaded_profile_path = g_strdup(path);
+    loaded_profile_mtime = fm_app_config_stat_mtime(path);
+
     g_free(path);
     g_key_file_free(kf);
 
@@ -1117,110 +1189,28 @@ static void _save_choice(gpointer key, gpointer val, gpointer buf)
 
 void fm_app_config_save_profile(FmAppConfig* cfg, const char* name)
 {
-    char* path = NULL;;
     char* dir_path;
 
     if(!name || !*name)
         name = "default";
 
+    /* rdfm.conf is treated as read-only from the app's side: the user
+     * hand-manages it directly, and every previous attempt at "smart"
+     * merging/guarding here (mtime checks, per-field default-omission,
+     * legacy-path migration) kept fighting the fact that this writer
+     * regenerates the file from a fixed set of known sections/fields
+     * and silently drops anything it doesn't know about -- including
+     * the entire [desktop] section. Simplest fix: never write it. */
+    (void)cfg;
+
     dir_path = g_build_filename(g_get_user_config_dir(), "rdfm", name, NULL);
-    if(g_mkdir_with_parents(dir_path, 0700) != -1)
-    {
-        GString* buf = g_string_sized_new(1024);
-
-        g_string_append(buf, "[config]\n");
-        g_string_append_printf(buf, "bm_open_method=%d\n", cfg->bm_open_method);
-        /*if(cfg->su_cmd && *cfg->su_cmd)
-            g_string_append_printf(buf, "su_cmd=%s\n", cfg->su_cmd);*/
 #if FM_CHECK_VERSION(1, 2, 0)
-        if (cfg->home_path && cfg->home_path[0]
-            && strcmp(cfg->home_path, fm_get_home_dir()) != 0)
-            g_string_append_printf(buf, "home_path=%s\n", cfg->home_path);
-#endif
-
-        g_string_append(buf, "\n[volume]\n");
-        g_string_append_printf(buf, "mount_on_startup=%d\n", cfg->mount_on_startup);
-        g_string_append_printf(buf, "mount_removable=%d\n", cfg->mount_removable);
-        g_string_append_printf(buf, "autorun=%d\n", cfg->autorun);
-
-        if (g_hash_table_size(cfg->autorun_choices) > 0)
-        {
-            g_string_append(buf, "\n[autorun]\n");
-            g_hash_table_foreach(cfg->autorun_choices, _save_choice, buf);
-        }
-
-        g_string_append(buf, "\n[ui]\n");
-        g_string_append_printf(buf, "always_show_tabs=%d\n", cfg->always_show_tabs);
-        g_string_append_printf(buf, "max_tab_chars=%d\n", cfg->max_tab_chars);
-        /* g_string_append_printf(buf, "hide_close_btn=%d\n", cfg->hide_close_btn); */
-        g_string_append_printf(buf, "win_width=%d\n", cfg->win_width);
-        g_string_append_printf(buf, "win_height=%d\n", cfg->win_height);
-        if (cfg->maximized)
-            g_string_append(buf, "maximized=1\n");
-        g_string_append_printf(buf, "splitter_pos=%d\n", cfg->splitter_pos);
-        g_string_append_printf(buf, "media_in_new_tab=%d\n", cfg->media_in_new_tab);
-        g_string_append_printf(buf, "desktop_folder_new_win=%d\n", cfg->desktop_folder_new_win);
-        g_string_append_printf(buf, "change_tab_on_drop=%d\n", cfg->change_tab_on_drop);
-        g_string_append_printf(buf, "close_on_unmount=%d\n", cfg->close_on_unmount);
-#if FM_CHECK_VERSION(1, 2, 0)
-        g_string_append_printf(buf, "focus_previous=%d\n", cfg->focus_previous);
-        g_string_append(buf, "side_pane_mode=");
-        if (cfg->side_pane_mode & FM_SP_HIDE)
-            g_string_append(buf, "hidden;");
-        g_string_append_printf(buf, "%s\n",
-                               fm_side_pane_get_mode_name(cfg->side_pane_mode & FM_SP_MODE_MASK));
+    /* per-folder view settings cache (.directory-based) is a separate
+     * concern from rdfm.conf and is left intact */
+    fm_folder_config_save_cache();
 #else
-        g_string_append_printf(buf, "side_pane_mode=%d\n", cfg->side_pane_mode);
+    fm_folder_config_save_cache(dir_path);
 #endif
-#if FM_CHECK_VERSION(1, 0, 2)
-        g_string_append_printf(buf, "view_mode=%s\n", fm_standard_view_mode_to_str(cfg->view_mode));
-#else
-        g_string_append_printf(buf, "view_mode=%d\n", cfg->view_mode);
-#endif
-        g_string_append_printf(buf, "show_hidden=%d\n", cfg->show_hidden);
-        _save_sort(buf, cfg->sort_type, cfg->sort_by);
-#if FM_CHECK_VERSION(1, 0, 2)
-        if (cfg->columns && cfg->columns[0])
-        {
-            char **colptr;
-
-            g_string_append(buf, "columns=");
-            for (colptr = cfg->columns; *colptr; colptr++)
-                g_string_append_printf(buf, "%s;", *colptr);
-            g_string_append_c(buf, '\n');
-        }
-#endif
-        g_string_append(buf, "toolbar=");
-        if (!cfg->tb.visible)
-            g_string_append(buf, "hidden;");
-        if (cfg->tb.new_win)
-            g_string_append(buf, "newwin;");
-        if (cfg->tb.new_tab)
-            g_string_append(buf, "newtab;");
-        if (cfg->tb.nav)
-            g_string_append(buf, "navigation;");
-        if (cfg->tb.home)
-            g_string_append(buf, "home;");
-        g_string_append_c(buf, '\n');
-        g_string_append_printf(buf, "show_statusbar=%d\n", cfg->show_statusbar);
-        g_string_append_printf(buf, "pathbar_mode_buttons=%d\n", cfg->pathbar_mode_buttons);
-        if(cfg->icon_theme && cfg->icon_theme[0])
-            g_string_append_printf(buf, "icon_theme=%s\n", cfg->icon_theme);
-        if(cfg->gtk_theme && cfg->gtk_theme[0])
-            g_string_append_printf(buf, "gtk_theme=%s\n", cfg->gtk_theme);
-
-        path = g_build_filename(dir_path, "rdfm.conf", NULL);
-        g_file_set_contents(path, buf->str, buf->len, NULL);
-        g_free(path);
-        g_string_free(buf, TRUE);
-
-#if FM_CHECK_VERSION(1, 2, 0)
-        /* libfm does not have any profile things */
-        fm_folder_config_save_cache();
-#else
-        fm_folder_config_save_cache(dir_path);
-#endif
-    }
     g_free(dir_path);
 }
 

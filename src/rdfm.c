@@ -280,6 +280,117 @@ int main(int argc, char** argv)
             g_object_set(settings, "gtk-icon-theme-name", app_config->icon_theme, NULL);
         if(app_config->gtk_theme && app_config->gtk_theme[0])
             g_object_set(settings, "gtk-theme-name", app_config->gtk_theme, NULL);
+
+        /* app window (FmMainWin) chrome colors + font -- Wayland-safe,
+         * unlike the X11-only desktop/wallpaper manager's desktop_bg/fg.
+         * Each area (toolbar, location bar, file view) is independently
+         * themeable and falls back to app_bg/app_fg when not set on its
+         * own. The file view's column header always matches the view's
+         * own bg/fg -- it's not separately configurable by design. */
+        gboolean has_bg = app_config->app_bg_set || app_config->toolbar_bg_set ||
+                         app_config->pathbar_bg_set || app_config->view_bg_set;
+        gboolean has_fg = app_config->app_fg_set || app_config->toolbar_fg_set ||
+                         app_config->pathbar_fg_set || app_config->view_fg_set;
+        if (has_bg || has_fg || app_config->app_font)
+        {
+            GString *css = g_string_new(NULL);
+            GdkRGBA *bg, *fg;
+
+            if (app_config->app_bg_set)
+                g_string_append_printf(css,
+                    "window.rdfm-main-win { background-color: #%02x%02x%02x; background-image: none; }\n",
+                    (int)(app_config->app_bg.red   * 255),
+                    (int)(app_config->app_bg.green * 255),
+                    (int)(app_config->app_bg.blue  * 255));
+            if (app_config->app_fg_set)
+                g_string_append_printf(css,
+                    "window.rdfm-main-win { color: #%02x%02x%02x; }\n",
+                    (int)(app_config->app_fg.red   * 255),
+                    (int)(app_config->app_fg.green * 255),
+                    (int)(app_config->app_fg.blue  * 255));
+
+            /* toolbar: falls back to app_bg/app_fg */
+            bg = app_config->toolbar_bg_set ? &app_config->toolbar_bg
+                : app_config->app_bg_set ? &app_config->app_bg : NULL;
+            fg = app_config->toolbar_fg_set ? &app_config->toolbar_fg
+                : app_config->app_fg_set ? &app_config->app_fg : NULL;
+            if (bg)
+                g_string_append_printf(css,
+                    ".rdfm-toolbar { background-color: #%02x%02x%02x; background-image: none; border: none; box-shadow: none; }\n",
+                    (int)(bg->red * 255), (int)(bg->green * 255), (int)(bg->blue * 255));
+            if (fg)
+                g_string_append_printf(css,
+                    ".rdfm-toolbar { color: #%02x%02x%02x; }\n",
+                    (int)(fg->red * 255), (int)(fg->green * 255), (int)(fg->blue * 255));
+
+            /* location bar (breadcrumb path-bar + text-entry mode): no
+             * border/shadow either way, falls back to app_bg/app_fg */
+            bg = app_config->pathbar_bg_set ? &app_config->pathbar_bg
+                : app_config->app_bg_set ? &app_config->app_bg : NULL;
+            fg = app_config->pathbar_fg_set ? &app_config->pathbar_fg
+                : app_config->app_fg_set ? &app_config->app_fg : NULL;
+            g_string_append(css,
+                ".rdfm-pathbar, .rdfm-pathbar * { border: none; box-shadow: none; background-image: none; }\n");
+            if (bg)
+                g_string_append_printf(css,
+                    ".rdfm-pathbar, .rdfm-pathbar * { background-color: #%02x%02x%02x; }\n",
+                    (int)(bg->red * 255), (int)(bg->green * 255), (int)(bg->blue * 255));
+            if (fg)
+                g_string_append_printf(css,
+                    ".rdfm-pathbar, .rdfm-pathbar * { color: #%02x%02x%02x; }\n",
+                    (int)(fg->red * 255), (int)(fg->green * 255), (int)(fg->blue * 255));
+
+            /* file view (tree/list/icon) + its column header, which
+             * always matches the view's own colors -- never separately
+             * configurable */
+            bg = app_config->view_bg_set ? &app_config->view_bg
+                : app_config->app_bg_set ? &app_config->app_bg : NULL;
+            fg = app_config->view_fg_set ? &app_config->view_fg
+                : app_config->app_fg_set ? &app_config->app_fg : NULL;
+            if (bg)
+                g_string_append_printf(css,
+                    "window.rdfm-main-win .view, "
+                    "window.rdfm-main-win .view header button, "
+                    "window.rdfm-main-win treeview header button "
+                    "{ background-color: #%02x%02x%02x; background-image: none; border: none; box-shadow: none; }\n",
+                    (int)(bg->red * 255), (int)(bg->green * 255), (int)(bg->blue * 255));
+            if (fg)
+                g_string_append_printf(css,
+                    "window.rdfm-main-win .view, "
+                    "window.rdfm-main-win .view header button, "
+                    "window.rdfm-main-win treeview header button "
+                    "{ color: #%02x%02x%02x; }\n",
+                    (int)(fg->red * 255), (int)(fg->green * 255), (int)(fg->blue * 255));
+
+            if (app_config->app_font)
+            {
+                PangoFontDescription *desc = pango_font_description_from_string(app_config->app_font);
+                const char *family = pango_font_description_get_family(desc);
+                gint size = pango_font_description_get_size(desc);
+                gboolean is_absolute = pango_font_description_get_size_is_absolute(desc);
+
+                g_string_append(css, "window.rdfm-main-win, window.rdfm-main-win * { ");
+                if (family)
+                    g_string_append_printf(css, "font-family: \"%s\"; ", family);
+                if (size > 0)
+                {
+                    if (is_absolute)
+                        g_string_append_printf(css, "font-size: %dpx; ", size / PANGO_SCALE);
+                    else
+                        g_string_append_printf(css, "font-size: %dpt; ", size / PANGO_SCALE);
+                }
+                g_string_append(css, "}\n");
+                pango_font_description_free(desc);
+            }
+
+            GtkCssProvider *provider = gtk_css_provider_new();
+            gtk_css_provider_load_from_data(provider, css->str, -1, NULL);
+            gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+                                                      GTK_STYLE_PROVIDER(provider),
+                                                      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+            g_object_unref(provider);
+            g_string_free(css, TRUE);
+        }
     }
 
     /* the main part */
