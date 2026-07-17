@@ -288,9 +288,11 @@ int main(int argc, char** argv)
          * own. The file view's column header always matches the view's
          * own bg/fg -- it's not separately configurable by design. */
         gboolean has_bg = app_config->app_bg_set || app_config->toolbar_bg_set ||
-                         app_config->pathbar_bg_set || app_config->view_bg_set;
+                         app_config->pathbar_bg_set || app_config->view_bg_set ||
+                         app_config->sel_bg_set;
         gboolean has_fg = app_config->app_fg_set || app_config->toolbar_fg_set ||
-                         app_config->pathbar_fg_set || app_config->view_fg_set;
+                         app_config->pathbar_fg_set || app_config->view_fg_set ||
+                         app_config->sel_fg_set;
         if (has_bg || has_fg || app_config->app_font)
         {
             GString *css = g_string_new(NULL);
@@ -361,6 +363,54 @@ int main(int argc, char** argv)
                     "window.rdfm-main-win treeview header button "
                     "{ color: #%02x%02x%02x; }\n",
                     (int)(fg->red * 255), (int)(fg->green * 255), (int)(fg->blue * 255));
+
+            /* selection highlight -- must be emitted AFTER the .view blanket
+             * rules so it wins at equal specificity (later rule wins in CSS).
+             * Covers: treeview list/detail rows, icon view cells, and the
+             * rubberband selection focus ring.  When view_bg is a dark flat
+             * color the theme's :selected rules get buried; these restore a
+             * visible, independently configurable highlight.
+             * Falls back: sel_bg → app_fg (inverted accent); sel_fg → app_bg. */
+            if (app_config->sel_bg_set || app_config->sel_fg_set)
+            {
+                /* treeview row :selected (list / detail view) */
+                if (app_config->sel_bg_set)
+                    g_string_append_printf(css,
+                        "window.rdfm-main-win treeview:selected,"
+                        "window.rdfm-main-win treeview row:selected,"
+                        "window.rdfm-main-win treeview row:selected:focus"
+                        " { background-color: #%02x%02x%02x; background-image: none; }\n",
+                        (int)(app_config->sel_bg.red   * 255),
+                        (int)(app_config->sel_bg.green * 255),
+                        (int)(app_config->sel_bg.blue  * 255));
+                if (app_config->sel_fg_set)
+                    g_string_append_printf(css,
+                        "window.rdfm-main-win treeview:selected,"
+                        "window.rdfm-main-win treeview row:selected,"
+                        "window.rdfm-main-win treeview row:selected:focus"
+                        " { color: #%02x%02x%02x; }\n",
+                        (int)(app_config->sel_fg.red   * 255),
+                        (int)(app_config->sel_fg.green * 255),
+                        (int)(app_config->sel_fg.blue  * 255));
+
+                /* icon view cell :selected (GtkIconView uses .cell:selected) */
+                if (app_config->sel_bg_set)
+                    g_string_append_printf(css,
+                        "window.rdfm-main-win .view .cell:selected,"
+                        "window.rdfm-main-win .view .cell:selected:focus"
+                        " { background-color: #%02x%02x%02x; background-image: none; }\n",
+                        (int)(app_config->sel_bg.red   * 255),
+                        (int)(app_config->sel_bg.green * 255),
+                        (int)(app_config->sel_bg.blue  * 255));
+                if (app_config->sel_fg_set)
+                    g_string_append_printf(css,
+                        "window.rdfm-main-win .view .cell:selected,"
+                        "window.rdfm-main-win .view .cell:selected:focus"
+                        " { color: #%02x%02x%02x; }\n",
+                        (int)(app_config->sel_fg.red   * 255),
+                        (int)(app_config->sel_fg.green * 255),
+                        (int)(app_config->sel_fg.blue  * 255));
+            }
 
             if (app_config->app_font)
             {

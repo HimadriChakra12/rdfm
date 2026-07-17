@@ -181,6 +181,14 @@ struct _FmAppConfig
     gboolean view_fg_set;
     GdkRGBA view_fg;
 
+    /* selected item highlight -- without this, setting view_bg/view_fg to a
+     * dark uniform color makes selection invisible (theme's :selected rules
+     * get overridden by the application-priority .view blanket rule). */
+    gboolean sel_bg_set;
+    GdkRGBA sel_bg;
+    gboolean sel_fg_set;
+    GdkRGBA sel_fg;
+
     /*char* su_cmd;*/
 
     /* pre-1.2.0 style config - common settings for all monitors */
