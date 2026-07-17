@@ -6,4 +6,29 @@ A more precised gtk3(hardcoded) fork of pcmanfm.
 ```
 libfm
 libfm-gtk3
+intltool
+libtool
+gettext
+pkg-config
+autoconf
+automake
 ```
+
+### Config-driven color system (`data/pcmanfm.conf`)
+Colors in `[desktop]` accept any CSS color string — no GTK theme dependency:
+```ini
+[desktop]
+desktop_bg=#1a1a2e       # background fill (or any CSS color)
+desktop_fg=#e0e0e0       # icon label text
+desktop_shadow=#000000   # text drop shadow
+```
+Stored and loaded as plain `#rrggbb` hex. `GdkRGBA` used internally (0.0–1.0 range).
+ 
+### Icon and GTK theme override (`[ui]` section)
+```ini
+[ui]
+icon_theme=Papirus        # overrides system icon theme
+gtk_theme=Adwaita         # overrides system GTK theme
+```
+Applied via `GtkSettings` at startup — works independently of `~/.config/gtk-3.0/settings.ini` or any environment variable. Commented out by default (system defaults used).
+
