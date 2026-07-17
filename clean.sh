@@ -16,3 +16,4 @@ rm -rf src/.deps
 
 # intltool/gettext generated po cruft
 rm -f po/Makefile po/Makefile.in po/stamp-it po/POTFILES po/LINGUAS
+rm -f *~
