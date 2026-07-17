@@ -2,7 +2,7 @@ Changes in 1.4.0 since 1.3.2:
 
 * Updated translations.
 
-* Updated pcmanfm.desktop.
+* Updated rdfm.desktop.
 
 * GCC 14 compilation support.
 
@@ -147,7 +147,7 @@ Changes on 1.2.1 since 1.2.0:
 
 * Correctly use screen number to display all the windows.
 
-* Added "System;FileTools;" into Categories for pcmanfm.desktop, those
+* Added "System;FileTools;" into Categories for rdfm.desktop, those
     are recommended categories for the FileManager one.
 
 * Reordered 'View' menu items a bit to conform with HIG.
@@ -158,7 +158,7 @@ Changes on 1.2.1 since 1.2.0:
 
 Changes on 1.2.0 since 1.1.0:
 
-* Implemented accessibility for the desktop managed by pcmanfm.
+* Implemented accessibility for the desktop managed by rdfm.
 
 * Added missing accessibility relations between main window parts.
 
@@ -166,7 +166,7 @@ Changes on 1.2.0 since 1.1.0:
     while desktop text shows them truncated in case of long names.
 
 * For LibFM version 1.2.0 (and newer) show version of LibFM in the About
-    window as well, not just PCManFM version.
+    window as well, not just RDFM version.
 
 * Added support for configuration options of LibFM 1.1.0 and 1.2.0 into
     Preferences dialog.
@@ -177,8 +177,8 @@ Changes on 1.2.0 since 1.1.0:
     Desktop Preferences dialog will be applied only to current monitor.
     If no setup was ever done for secondary monitor then setup will be
     copied from primary one. Configuration will be converted into new
-    style from old one on the first start of PCManFM desktop manager.
-    The new configuration will be not known to old version of PCManFM so
+    style from old one on the first start of RDFM desktop manager.
+    The new configuration will be not known to old version of RDFM so
     if you start old one again, it will gain default configuration for
     the desktop instead.
 
@@ -190,7 +190,7 @@ Changes on 1.2.0 since 1.1.0:
 * Implemented saving of columns (works for Detailed List View mode). The
     list of columns is represented as <name>[:<width]. This feature will
     work with LibFM 1.0.2 or newer. The LibFM 1.1.x will get some benefit
-    only, the PCManFM can load that list from config. The possibility to
+    only, the RDFM can load that list from config. The possibility to
     catch columns change is available since LibFM 1.2.0 so this feature
     will work in full only with LibFM 1.2.0 or newer.
 
@@ -204,7 +204,7 @@ Changes on 1.2.0 since 1.1.0:
 * The 'Tools'->'Open Current Folder as Root' menu item is removed along
     with 'su_cmd' configuration option. That mode is too much dangerous
     and appropriate functionality can be achieved using DES-EMA extension
-    for context menu, no need to hardcode it into PCManFM.
+    for context menu, no need to hardcode it into RDFM.
 
 * Added support for extended sort modes into main menu.
 
@@ -214,7 +214,7 @@ Changes on 1.2.0 since 1.1.0:
 
 * Added support for per-folder configurations: sort mode, show_hidden,
     and view mode. The settings will be loaded from the file .directory
-    if it exists, the file ~/.config/pcmanfm/<profile>/dir-settings.conf
+    if it exists, the file ~/.config/rdfm/<profile>/dir-settings.conf
     will be used otherwise (and if linked with LibFM 1.2.0 or newer then
     the file ~/.config/libfm/dir-settings.conf will be used instead by
     the LibFM). Those settings will be saved not for each of the visited
@@ -296,7 +296,7 @@ Changes on 1.2.0 since 1.1.0:
     remember as well if user selects not ask again and press the 'Cancel'
     button in the dialog. The choice 'not ask' is saved in config file as
     asterisk (*) prepended to application ID. The choice of view in the
-    PCManFM itself is saved as pseudo-ID "pcmanfm".
+    RDFM itself is saved as pseudo-ID "rdfm".
 
 * The menu option 'Edit'->'Delete' is split to two: 'Move to Trash' and
     'Delete' because some users with disabilities may not be able to use
@@ -407,7 +407,7 @@ Changes on 1.2.0 since 1.1.0:
 
 * Added API to create third-party plugins that may append own text to the
     statusbar text for selected files. The plugins should be installed
-    into $(libdir)/pcmanfm folder and use "#include <pcmanfm-modules.h>"
+    into $(libdir)/rdfm folder and use "#include <rdfm-modules.h>"
     directive in the code.
 
 * Added new menu option 'Tools'->'Run a Command in Current Folder' to run

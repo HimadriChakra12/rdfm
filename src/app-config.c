@@ -101,7 +101,7 @@ static gboolean fm_folder_config_close(FmFolderConfig *fc, GError **error)
         {
             /* raise 'changed' flag and schedule config save */
             dir_cache_changed = TRUE;
-            pcmanfm_save_config(FALSE);
+            rdfm_save_config(FALSE);
         }
         g_free(fc->group);
     }
@@ -834,14 +834,14 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
     if(!name || !*name) /* if profile name is not provided, use 'default' */
     {
         name = "default";
-        old_name = "pcmanfm"; /* for compatibility with old versions. */
+        old_name = "rdfm"; /* for compatibility with old versions. */
     }
 
     /* load system-wide settings */
     dirs = g_get_system_config_dirs();
     for(dir=dirs;*dir;++dir)
     {
-        path = g_build_filename(*dir, "pcmanfm", name, "pcmanfm.conf", NULL);
+        path = g_build_filename(*dir, "rdfm", name, "rdfm.conf", NULL);
         if(g_key_file_load_from_file(kf, path, 0, NULL))
             fm_app_config_load_from_key_file(cfg, kf);
         g_free(path);
@@ -851,7 +851,7 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
 
     /* For backward compatibility, try to load old config file and
      * then migrate to new location */
-    path = g_strconcat(g_get_user_config_dir(), "/pcmanfm/", old_name, ".conf", NULL);
+    path = g_strconcat(g_get_user_config_dir(), "/rdfm/", old_name, ".conf", NULL);
     if(G_UNLIKELY(g_key_file_load_from_file(kf, path, 0, NULL)))
     {
         char* new_dir;
@@ -859,11 +859,11 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
         fm_app_config_load_from_key_file(cfg, kf);
 
         /* create the profile dir */
-        new_dir = g_build_filename(g_get_user_config_dir(), "pcmanfm", name, NULL);
+        new_dir = g_build_filename(g_get_user_config_dir(), "rdfm", name, NULL);
         if(g_mkdir_with_parents(new_dir, 0700) == 0)
         {
             /* move the old config file to new location */
-            char* new_path = g_build_filename(new_dir, "pcmanfm.conf", NULL);
+            char* new_path = g_build_filename(new_dir, "rdfm.conf", NULL);
             rename(path, new_path);
             g_free(new_path);
         }
@@ -872,7 +872,7 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
     else
     {
         g_free(path);
-        path = g_build_filename(g_get_user_config_dir(), "pcmanfm", name, "pcmanfm.conf", NULL);
+        path = g_build_filename(g_get_user_config_dir(), "rdfm", name, "rdfm.conf", NULL);
         if(g_key_file_load_from_file(kf, path, 0, NULL))
             fm_app_config_load_from_key_file(cfg, kf);
     }
@@ -881,7 +881,7 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
 
 #if !FM_CHECK_VERSION(1, 2, 0)
     fc_cache = g_key_file_new();
-    path = g_build_filename(g_get_user_config_dir(), "pcmanfm", name,
+    path = g_build_filename(g_get_user_config_dir(), "rdfm", name,
                             "dir-settings.conf", NULL);
     g_key_file_load_from_file(fc_cache, path, 0, NULL);
     g_free(path);
@@ -1045,7 +1045,7 @@ void fm_app_config_save_config_for_path(FmPath *path, GtkSortType mode, gint by,
     fm_folder_config_close(fc, NULL);
 #if FM_CHECK_VERSION(1, 2, 0)
     /* raise 'changed' flag and schedule config save */
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 #endif
 }
 
@@ -1057,7 +1057,7 @@ void fm_app_config_clear_config_for_path(FmPath *path)
     fm_folder_config_close(fc, NULL);
 #if FM_CHECK_VERSION(1, 2, 0)
     /* raise 'changed' flag and schedule config save */
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 #endif
 }
 
@@ -1123,7 +1123,7 @@ void fm_app_config_save_profile(FmAppConfig* cfg, const char* name)
     if(!name || !*name)
         name = "default";
 
-    dir_path = g_build_filename(g_get_user_config_dir(), "pcmanfm", name, NULL);
+    dir_path = g_build_filename(g_get_user_config_dir(), "rdfm", name, NULL);
     if(g_mkdir_with_parents(dir_path, 0700) != -1)
     {
         GString* buf = g_string_sized_new(1024);
@@ -1209,7 +1209,7 @@ void fm_app_config_save_profile(FmAppConfig* cfg, const char* name)
         if(cfg->gtk_theme && cfg->gtk_theme[0])
             g_string_append_printf(buf, "gtk_theme=%s\n", cfg->gtk_theme);
 
-        path = g_build_filename(dir_path, "pcmanfm.conf", NULL);
+        path = g_build_filename(dir_path, "rdfm.conf", NULL);
         g_file_set_contents(path, buf->str, buf->len, NULL);
         g_free(path);
         g_string_free(buf, TRUE);

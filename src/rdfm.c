@@ -1,5 +1,5 @@
 /*
- *      pcmanfm.c
+ *      rdfm.c
  *
  *      Copyright 2009 - 2010 Hong Jen Yee (PCMan) <pcman.tw@gmail.com>
  *      Copyright 2012-2015 Andriy Grytsenko (LStranger) <andrej@rep.kiev.ua>
@@ -43,7 +43,7 @@
 #include "desktop.h"
 #include "volume-manager.h"
 #include "pref.h"
-#include "pcmanfm.h"
+#include "rdfm.h"
 #include "single-inst.h"
 
 static int signal_pipe[2] = {-1, -1};
@@ -71,16 +71,16 @@ static gboolean find_files = FALSE;
 static char* ipc_cwd = NULL;
 static char* window_role = NULL;
 
-static int n_pcmanfm_ref = 0;
+static int n_rdfm_ref = 0;
 
 static GOptionEntry opt_entries[] =
 {
-    /* options only acceptable by first pcmanfm instance. These options are not passed through IPC */
+    /* options only acceptable by first rdfm instance. These options are not passed through IPC */
     { "profile", 'p', 0, G_OPTION_ARG_STRING, &profile, N_("Name of configuration profile"), N_("PROFILE") },
-    { "daemon-mode", 'd', 0, G_OPTION_ARG_NONE, &daemon_mode, N_("Run PCManFM as a daemon"), NULL },
+    { "daemon-mode", 'd', 0, G_OPTION_ARG_NONE, &daemon_mode, N_("Run RDFM as a daemon"), NULL },
     { "no-desktop", '\0', 0, G_OPTION_ARG_NONE, &no_desktop, N_("No function. Just to be compatible with nautilus"), NULL },
 
-    /* options that are acceptable for every instance of pcmanfm and will be passed through IPC. */
+    /* options that are acceptable for every instance of rdfm and will be passed through IPC. */
     { "desktop", '\0', 0, G_OPTION_ARG_NONE, &show_desktop, N_("Launch desktop manager"), NULL },
     { "desktop-off", '\0', 0, G_OPTION_ARG_NONE, &desktop_off, N_("Turn off desktop manager if it's running"), NULL },
     { "desktop-pref", '\0', 0, G_OPTION_ARG_NONE, &desktop_pref, N_("Open desktop preference dialog"), NULL },
@@ -98,7 +98,7 @@ static GOptionEntry opt_entries[] =
     { NULL }
 };
 
-static gboolean pcmanfm_run(gint screen_num);
+static gboolean rdfm_run(gint screen_num);
 
 /* it's not safe to call gtk+ functions in unix signal handler
  * since the process is interrupted here and the state of gtk+ is unpredictable. */
@@ -170,7 +170,7 @@ static void single_inst_cb(const char* cwd, int screen_num)
             }
         }
     }
-    pcmanfm_run(screen_num);
+    rdfm_run(screen_num);
 }
 
 #if FM_CHECK_VERSION(1, 2, 0)
@@ -193,7 +193,7 @@ static gboolean fm_module_callback_tab_page_status(const char *name, gpointer in
 
 static void on_config_changed(FmAppConfig *cfg, gpointer _unused)
 {
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 int main(int argc, char** argv)
@@ -219,8 +219,8 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    /* ensure that there is only one instance of pcmanfm. */
-    inst.prog_name = "pcmanfm";
+    /* ensure that there is only one instance of rdfm. */
+    inst.prog_name = "rdfm";
     inst.cb = single_inst_cb;
     inst.opt_entries = opt_entries + 3;
     inst.screen_num = gdk_x11_get_default_screen();
@@ -269,7 +269,7 @@ int main(int argc, char** argv)
 #  endif
 #endif
 
-    /* load pcmanfm-specific config file */
+    /* load rdfm-specific config file */
     fm_app_config_load_from_profile(FM_APP_CONFIG(config), profile);
     g_signal_connect(config, "changed::saved_search", G_CALLBACK(on_config_changed), NULL);
 
@@ -283,7 +283,7 @@ int main(int argc, char** argv)
     }
 
     /* the main part */
-    if(pcmanfm_run(gdk_screen_get_number(gdk_screen_get_default())))
+    if(rdfm_run(gdk_screen_get_number(gdk_screen_get_default())))
     {
         first_run = FALSE;
         fm_volume_manager_init();
@@ -292,7 +292,7 @@ int main(int argc, char** argv)
 
         if(save_config_idle)
         {
-            pcmanfm_save_config(TRUE);
+            rdfm_save_config(TRUE);
             g_source_remove(save_config_idle);
             save_config_idle = 0;
         }
@@ -337,7 +337,7 @@ static gboolean reset_options(void)
     return TRUE;
 }
 
-gboolean pcmanfm_run(gint screen_num)
+gboolean rdfm_run(gint screen_num)
 {
     FmMainWin *win = NULL;
     gboolean ret = TRUE;
@@ -465,10 +465,10 @@ gboolean pcmanfm_run(gint screen_num)
         }
         if(cwd)
             fm_path_unref(cwd);
-        fm_launch_paths_simple(NULL, NULL, paths, pcmanfm_open_folder, NULL);
+        fm_launch_paths_simple(NULL, NULL, paths, rdfm_open_folder, NULL);
         g_list_foreach(paths, (GFunc)fm_path_unref, NULL);
         g_list_free(paths);
-        ret = (n_pcmanfm_ref >= 1); /* if there is opened window, return true to run the main loop. */
+        ret = (n_rdfm_ref >= 1); /* if there is opened window, return true to run the main loop. */
     }
     else
     {
@@ -476,17 +476,17 @@ gboolean pcmanfm_run(gint screen_num)
         {
             /* If the function is called the first time and we're in daemon mode,
            * don't open any folder.
-           * Checking if pcmanfm_run() is called the first time is needed to fix
-           * #3397444 - pcmanfm dont show window in daemon mode if i call 'pcmanfm' */
-            pcmanfm_ref();
+           * Checking if rdfm_run() is called the first time is needed to fix
+           * #3397444 - rdfm dont show window in daemon mode if i call 'rdfm' */
+            rdfm_ref();
         }
 #if FM_CHECK_VERSION(1, 0, 2)
-        else if (G_LIKELY(!find_files || n_pcmanfm_ref < 1))
+        else if (G_LIKELY(!find_files || n_rdfm_ref < 1))
 #else
         else
 #endif
         {
-            /* If we're not in daemon mode, or pcmanfm_run() is called because another
+            /* If we're not in daemon mode, or rdfm_run() is called because another
              * instance send signal to us, open cwd by default. */
             FmPath* path;
             char* cwd = ipc_cwd ? ipc_cwd : g_get_current_dir();
@@ -504,27 +504,27 @@ gboolean pcmanfm_run(gint screen_num)
     /* we got a reference at this point so we can open a search dialog */
     if (ret && find_files)
         fm_launch_search_simple(GTK_WINDOW(win), NULL, NULL,
-                                pcmanfm_open_folder, NULL);
+                                rdfm_open_folder, NULL);
 #endif
     reset_options();
     return ret;
 }
 
 /* After opening any window/dialog/tool, this should be called. */
-void pcmanfm_ref()
+void rdfm_ref()
 {
-    ++n_pcmanfm_ref;
-    /* g_debug("ref: %d", n_pcmanfm_ref); */
+    ++n_rdfm_ref;
+    /* g_debug("ref: %d", n_rdfm_ref); */
 }
 
 /* After closing any window/dialog/tool, this should be called.
- * If the last window is closed and we are not a deamon, pcmanfm will quit.
+ * If the last window is closed and we are not a deamon, rdfm will quit.
  */
-void pcmanfm_unref()
+void rdfm_unref()
 {
-    --n_pcmanfm_ref;
-    /* g_debug("unref: %d, daemon_mode=%d, desktop_running=%d", n_pcmanfm_ref, daemon_mode, desktop_running); */
-    if( 0 == n_pcmanfm_ref )
+    --n_rdfm_ref;
+    /* g_debug("unref: %d, daemon_mode=%d, desktop_running=%d", n_rdfm_ref, daemon_mode, desktop_running); */
+    if( 0 == n_rdfm_ref )
         gtk_main_quit();
 }
 
@@ -556,7 +556,7 @@ static void move_window_to_desktop(FmMainWin* win, FmDesktop* desktop)
                (XEvent *) &xev);
 }
 
-gboolean pcmanfm_open_folder(GAppLaunchContext* ctx, GList* folder_infos, gpointer user_data, GError** err)
+gboolean rdfm_open_folder(GAppLaunchContext* ctx, GList* folder_infos, gpointer user_data, GError** err)
 {
     GList* l = folder_infos;
     gboolean use_new_win = new_win;
@@ -585,12 +585,12 @@ gboolean pcmanfm_open_folder(GAppLaunchContext* ctx, GList* folder_infos, gpoint
 
 static gboolean on_save_config_idle(gpointer user_data)
 {
-    pcmanfm_save_config(TRUE);
+    rdfm_save_config(TRUE);
     save_config_idle = 0;
     return FALSE;
 }
 
-void pcmanfm_save_config(gboolean immediate)
+void rdfm_save_config(gboolean immediate)
 {
     if(immediate)
     {
@@ -605,7 +605,7 @@ void pcmanfm_save_config(gboolean immediate)
     }
 }
 
-gboolean pcmanfm_can_open_path_in_terminal(FmPath* dir)
+gboolean rdfm_can_open_path_in_terminal(FmPath* dir)
 {
     GFile *gf;
     char *wd;
@@ -619,7 +619,7 @@ gboolean pcmanfm_can_open_path_in_terminal(FmPath* dir)
     return (wd != NULL);
 }
 
-void pcmanfm_open_folder_in_terminal(GtkWindow* parent, FmPath* dir)
+void rdfm_open_folder_in_terminal(GtkWindow* parent, FmPath* dir)
 {
 #if !FM_CHECK_VERSION(1, 2, 0)
     GAppInfo* app;
@@ -680,7 +680,7 @@ void pcmanfm_open_folder_in_terminal(GtkWindow* parent, FmPath* dir)
         g_object_unref(ctx);
         g_object_unref(app);
 
-        /* switch back to old cwd and fix #3114626 - PCManFM 0.9.9 Umount partitions problem */
+        /* switch back to old cwd and fix #3114626 - RDFM 0.9.9 Umount partitions problem */
         g_chdir(old_cwd); /* This is really dirty, but we don't have better solution now. */
         g_free(old_cwd);
         if (old_pwd)
@@ -691,9 +691,9 @@ void pcmanfm_open_folder_in_terminal(GtkWindow* parent, FmPath* dir)
     }
 }
 
-char* pcmanfm_get_profile_dir(gboolean create)
+char* rdfm_get_profile_dir(gboolean create)
 {
-    char* dir = g_build_filename(g_get_user_config_dir(), "pcmanfm", profile ? profile : "default", NULL);
+    char* dir = g_build_filename(g_get_user_config_dir(), "rdfm", profile ? profile : "default", NULL);
     if(create)
         g_mkdir_with_parents(dir, 0700);
     return dir;

@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([pcmanfm], [1.4.0], [http://pcmanfm.sf.net/])
+AC_INIT([rdfm], [1.4.0], [http://rdfm.sf.net/])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign no-dist-gzip dist-xz])
 
 AC_CONFIG_HEADERS([config.h])
@@ -44,7 +44,7 @@ AC_ARG_ENABLE(
 
 AC_ARG_ENABLE(debug,
     [AC_HELP_STRING([--enable-debug],
-        [build pcmanfm with debug support @<:@default=no@:>@])],
+        [build rdfm with debug support @<:@default=no@:>@])],
     [enable_debug="${enableval}"],
     [enable_debug=no])
 
@@ -96,7 +96,7 @@ PKG_CHECK_MODULES(FM, [$fm_modules])
 AC_SUBST(FM_CFLAGS)
 AC_SUBST(FM_LIBS)
 
-GETTEXT_PACKAGE=pcmanfm
+GETTEXT_PACKAGE=rdfm
 AC_SUBST(GETTEXT_PACKAGE)
 
 # Generate po/LINGUAS from available .po files (may be empty).
@@ -122,11 +122,11 @@ AC_CONFIG_FILES([
     src/Makefile
     po/Makefile.in
     data/Makefile
-    data/pcmanfm.1
+    data/rdfm.1
     data/ui/Makefile
     data/ui/about.glade
 ])
 
 AC_OUTPUT
 
-echo Ready to make pcmanfm
+echo Ready to make rdfm

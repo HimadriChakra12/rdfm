@@ -27,7 +27,7 @@
 
 #include <libfm/fm.h>
 
-#include "pcmanfm.h"
+#include "rdfm.h"
 
 #include "pref.h"
 #include "app-config.h"
@@ -56,7 +56,7 @@ static GtkWidget* use_trash;
 static void on_response(GtkDialog* dlg, int res, GtkWindow** pdlg)
 {
     *pdlg = NULL;
-    pcmanfm_save_config(TRUE);
+    rdfm_save_config(TRUE);
     gtk_widget_destroy(GTK_WIDGET(dlg));
 }
 
@@ -1022,8 +1022,8 @@ void fm_edit_preference( GtkWindow* parent, int page )
         g_signal_connect(pref_dlg, "key-press-event", G_CALLBACK(on_key_press), notebook);
         g_object_unref(builder);
 
-        pcmanfm_ref();
-        g_signal_connect(pref_dlg, "destroy", G_CALLBACK(pcmanfm_unref), NULL);
+        rdfm_ref();
+        g_signal_connect(pref_dlg, "destroy", G_CALLBACK(rdfm_unref), NULL);
         if(parent)
             gtk_window_set_transient_for(pref_dlg, parent);
     }

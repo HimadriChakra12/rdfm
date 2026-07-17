@@ -1,7 +1,7 @@
 /*
  *      connect-server.c
  *
- *      This file is a part of the PCManFM project.
+ *      This file is a part of the RDFM project.
  *
  *      Copyright 2013-2016 Andriy Grytsenko (LStranger) <andrej@rep.kiev.ua>
  *
@@ -103,7 +103,7 @@ static void on_response(GtkDialog *dialog, gint resp, ConnectDlg *dlg)
     }
     gtk_widget_destroy(GTK_WIDGET(dlg->dlg));
     g_slice_free(ConnectDlg, dlg);
-    pcmanfm_unref();
+    rdfm_unref();
 }
 
 static void on_server_type(GtkComboBox *box, ConnectDlg *dlg)
@@ -249,7 +249,7 @@ void open_connect_dialog(GtkWindow *parent)
     g_signal_connect(dlg->login_entry, "changed", G_CALLBACK(on_login_entry), dlg);
     g_object_unref(builder);
 
-    pcmanfm_ref();
+    rdfm_ref();
     if(parent)
         gtk_window_set_transient_for(dlg->dlg, parent);
     gtk_window_present(dlg->dlg);

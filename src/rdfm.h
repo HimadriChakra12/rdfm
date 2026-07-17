@@ -1,5 +1,5 @@
 /*
- *      pcmanfm.h
+ *      rdfm.h
  *
  *      Copyright 2010 Hong Jen Yee (PCMan) <pcman.tw@gmail.com>
  *
@@ -19,8 +19,8 @@
  *      MA 02110-1301, USA.
  */
 
-#ifndef __PCMANFM_H__
-#define __PCMANFM_H__
+#ifndef __RDFM_H__
+#define __RDFM_H__
 
 #include <gtk/gtk.h>
 #include <libfm/fm.h>
@@ -33,20 +33,20 @@ G_BEGIN_DECLS
 #endif
 
 /* After opening any window/dialog/tool, this should be called. */
-void pcmanfm_ref();
+void rdfm_ref();
 
 /* After closing any window/dialog/tool, this should be called.
- * If the last window is closed and we are not a deamon, pcmanfm will quit.
+ * If the last window is closed and we are not a deamon, rdfm will quit.
  */
-void pcmanfm_unref();
+void rdfm_unref();
 
-gboolean pcmanfm_open_folder(GAppLaunchContext* ctx, GList* folder_infos, gpointer user_data, GError** err);
+gboolean rdfm_open_folder(GAppLaunchContext* ctx, GList* folder_infos, gpointer user_data, GError** err);
 
-char* pcmanfm_get_profile_dir(gboolean create);
-void pcmanfm_save_config(gboolean immediate);
+char* rdfm_get_profile_dir(gboolean create);
+void rdfm_save_config(gboolean immediate);
 
-gboolean pcmanfm_can_open_path_in_terminal(FmPath* dir);
-void pcmanfm_open_folder_in_terminal(GtkWindow* parent, FmPath* dir);
+gboolean rdfm_can_open_path_in_terminal(FmPath* dir);
+void rdfm_open_folder_in_terminal(GtkWindow* parent, FmPath* dir);
 
 G_END_DECLS
 

@@ -26,7 +26,7 @@
 #endif
 
 #include "desktop.h"
-#include "pcmanfm.h"
+#include "rdfm.h"
 
 #include <glib/gi18n.h>
 
@@ -183,7 +183,7 @@ static char* get_config_file(FmDesktop* desktop, gboolean create_dir)
             break;
     if(i >= n_screens)
         return NULL;
-    dir = pcmanfm_get_profile_dir(create_dir);
+    dir = rdfm_get_profile_dir(create_dir);
     path = g_strdup_printf("%s/desktop-items-%u.conf", dir, i);
     g_free(dir);
     return path;
@@ -2590,7 +2590,7 @@ static void fm_desktop_update_item_popup(FmFolderView* fv, GtkWindow* window,
             has_fixed = TRUE;
         else
             all_fixed = FALSE;
-        if (!pcmanfm_can_open_path_in_terminal(fm_file_info_get_path(item->fi)))
+        if (!rdfm_can_open_path_in_terminal(fm_file_info_get_path(item->fi)))
             all_native = FALSE;
 #if FM_CHECK_VERSION(1, 2, 0)
         if (item->is_special)
@@ -2675,7 +2675,7 @@ static void on_open_folder_in_terminal(GtkAction* act, gpointer user_data)
     FmDesktop* desktop = FM_DESKTOP(user_data);
 
     if(desktop->focus /*&& !fm_file_info_is_virtual(fi)*/)
-        pcmanfm_open_folder_in_terminal(NULL, fm_file_info_get_path(desktop->focus->fi));
+        rdfm_open_folder_in_terminal(NULL, fm_file_info_get_path(desktop->focus->fi));
 }
 
 static void on_fix_pos(GtkToggleAction* act, gpointer user_data)
@@ -3341,7 +3341,7 @@ static gboolean on_button_release(GtkWidget* w, GdkEventButton* evt)
         FmDesktopItem* clicked_item = hit_test(self, &it, evt->x, evt->y);
         if(clicked_item)
             /* single click */
-            fm_launch_file_simple(GTK_WINDOW(w), NULL, clicked_item->fi, pcmanfm_open_folder, w);
+            fm_launch_file_simple(GTK_WINDOW(w), NULL, clicked_item->fi, rdfm_open_folder, w);
     }
 
     /* forward the event to root window */
@@ -4833,7 +4833,7 @@ static void _set_sort(FmFolderView* fv, GtkSortType type, FmFolderModelViewCol b
         return;
     desktop->conf.desktop_sort_type = type;
     desktop->conf.desktop_sort_by = by;
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
     if (desktop->model)
         gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(desktop->model),
                                              by, type);
@@ -5016,7 +5016,7 @@ static void _get_custom_menu_callbacks(FmFolderView* fv,
     if(popup)
         *popup = fm_desktop_update_item_popup;
     if(launch)
-        *launch = pcmanfm_open_folder;
+        *launch = rdfm_open_folder;
 }
 
 /* init for FmFolderView interface implementation */
@@ -5209,7 +5209,7 @@ static void on_desktop_font_set(GtkFontButton* btn, FmDesktop *desktop)
 static void on_desktop_folder_new_win_toggled(GtkToggleButton* btn, FmDesktop *desktop)
 {
     app_config->desktop_folder_new_win = gtk_toggle_button_get_active(btn);
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 #if FM_CHECK_VERSION(1, 2, 0)
@@ -5494,8 +5494,8 @@ void fm_desktop_preference(GtkAction *act, FmDesktop *desktop)
         g_signal_connect(desktop_pref_dlg, "response", G_CALLBACK(on_response), &desktop_pref_dlg);
         g_object_unref(builder);
 
-        pcmanfm_ref();
-        g_signal_connect(desktop_pref_dlg, "destroy", G_CALLBACK(pcmanfm_unref), NULL);
+        rdfm_ref();
+        g_signal_connect(desktop_pref_dlg, "destroy", G_CALLBACK(rdfm_unref), NULL);
         /* make dialog be valid only before the desktop is destroyed */
         gtk_window_set_transient_for(desktop_pref_dlg, GTK_WINDOW(desktop));
         gtk_window_set_destroy_with_parent(desktop_pref_dlg, TRUE);
@@ -5620,7 +5620,7 @@ void fm_desktop_manager_init(gint on_screen)
     }
 #endif
 
-    pcmanfm_ref();
+    rdfm_ref();
 }
 
 void fm_desktop_manager_finalize()
@@ -5680,7 +5680,7 @@ void fm_desktop_manager_finalize()
     }
 #endif
 
-    pcmanfm_unref();
+    rdfm_unref();
 }
 
 FmDesktop* fm_desktop_get(gint screen, gint monitor)

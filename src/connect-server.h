@@ -1,7 +1,7 @@
 /*
  *      connect-server.h
  *
- *      This file is a part of the PCManFM project.
+ *      This file is a part of the RDFM project.
  *
  *      Copyright 2013 Andriy Grytsenko (LStranger) <andrej@rep.kiev.ua>
  *

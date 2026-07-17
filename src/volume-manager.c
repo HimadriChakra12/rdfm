@@ -28,7 +28,7 @@
 #include <libfm/fm-gtk.h>
 #include <glib/gi18n.h>
 #include <gio/gdesktopappinfo.h>
-#include "pcmanfm.h"
+#include "rdfm.h"
 #include "main-win.h"
 #include "app-config.h"
 
@@ -113,16 +113,16 @@ static void on_dlg_response(GtkDialog* dlg, int res, gpointer user_data)
 
             gtk_tree_model_get(model, &it, 2, &app, -1);
             fm_app_config_set_autorun_choice(app_config, data->content_type,
-                                             app ? g_app_info_get_id(app) : "pcmanfm",
+                                             app ? g_app_info_get_id(app) : "rdfm",
                                              dont_ask);
             _run_app(app, data->mount);
-            pcmanfm_save_config(FALSE);
+            rdfm_save_config(FALSE);
         }
     }
     else if (dont_ask) /* user chose don't ask and don't run */
     {
         fm_app_config_set_autorun_choice(app_config, data->content_type, NULL, TRUE);
-        pcmanfm_save_config(FALSE);
+        rdfm_save_config(FALSE);
     }
     g_signal_handlers_disconnect_by_func(dlg, on_dlg_response, data);
     g_signal_handlers_disconnect_by_func(data->view, on_row_activated, data);
@@ -135,7 +135,7 @@ static void on_dlg_response(GtkDialog* dlg, int res, gpointer user_data)
     g_free(data->content_type);
     g_slice_free(AutoRun, data);
 
-    pcmanfm_unref();
+    rdfm_unref();
 }
 
 static void on_content_type_finished(GObject* src_obj, GAsyncResult* res, gpointer user_data)
@@ -168,7 +168,7 @@ static void on_content_type_finished(GObject* src_obj, GAsyncResult* res, gpoint
                     /* skip the dialog and run the app */
                     if (def_type)
                     {
-                        if (strcmp(def_type, "pcmanfm") == 0)
+                        if (strcmp(def_type, "rdfm") == 0)
                             _run_app(NULL, data->mount);
                         else if ((app = G_APP_INFO(g_desktop_app_info_new(def_type))))
                             _run_app(app, data->mount);
@@ -198,7 +198,7 @@ _do_types:
 
         if (def_type)
         {
-            if (strcmp(def_type, "pcmanfm") == 0)
+            if (strcmp(def_type, "rdfm") == 0)
                 pos++; /* leave internal handler in row 0 */
             else if ((app = G_APP_INFO(g_desktop_app_info_new(def_type))))
             {
@@ -317,7 +317,7 @@ inline static void show_autorun_dlg(GVolume* vol, GMount* mount)
 
     g_mount_guess_content_type(mount, TRUE, data->cancel, on_content_type_finished, data);
 
-    pcmanfm_ref();
+    rdfm_ref();
 }
 
 inline static gboolean automount_volume(GVolume* vol, gboolean silent)

@@ -1,16 +1,16 @@
 .\" Process this file with
-.\" groff -man -Tascii pcmanfm.1
+.\" groff -man -Tascii rdfm.1
 .\"
-.TH PCManFM 1 "April 2018" "@PACKAGE@ @VERSION@" "User Manuals"
+.TH RDFM 1 "April 2018" "@PACKAGE@ @VERSION@" "User Manuals"
 .SH NAME
-PCManFM \- A lightweight Gtk+ based file manager for X Window.
+RDFM \- A lightweight Gtk+ based file manager for X Window.
 .SH SYNOPSIS
-.B pcmanfm
+.B rdfm
 [ options ] [
 .I directories
 ]
 .SH DESCRIPTION
-PCMan File Manager (\fBPCManFM\fP) is an extremely fast, lightweight, yet
+PCMan File Manager (\fBRDFM\fP) is an extremely fast, lightweight, yet
 feature-rich file manager with tabbed browsing. It is the default file
 manager for the lightweight desktop environment, \fBLXDE\fP.
 .br
@@ -37,7 +37,7 @@ Features:
 .SS Global options:
 .TP 20
 .BR \-d ", " \-\^\-daemon\-mode
-run PCManFM as a daemon (ignored if another PCManFM is already running)
+run RDFM as a daemon (ignored if another RDFM is already running)
 .TP
 .BI \-p " profile" "\fR,\fP \-\^\-profile=" profile
 load another configuration \fIprofile\fP instead of \fB"default"\fP
@@ -89,15 +89,15 @@ directories to open
 .SH DESKTOP MANAGEMENT
 The PCMan File Manager can manage your desktop. That includes drawing some
 background on it and showing icons of Desktop folder. To activate the desktop
-management the \fBpcmanfm\fP should be executed with option \fB\-\-desktop\fP.
+management the \fBrdfm\fP should be executed with option \fB\-\-desktop\fP.
 Other option that affects this mode is \fB\-\-one\-screen\fP. Change running
-desktop manager parameters you can by executing \fBpcmanfm\fP with option
+desktop manager parameters you can by executing \fBrdfm\fP with option
 \fB\-\-desktop\-pref\fP which opens window with preferences or using command
 line parameters for options \fB\-\-set\-wallpaper\fP or \fB\-\-wallpaper\-mode\fP.
-Execution \fBpcmanfm \-\-desktop\-off\fP terminates desktop management.
+Execution \fBrdfm \-\-desktop\-off\fP terminates desktop management.
 
-While \fBpcmanfm\fP manages desktop it displays icons on desktop. Behavior
-of icons resembles folder view in main window of \fBpcmanfm\fP but icons on
+While \fBrdfm\fP manages desktop it displays icons on desktop. Behavior
+of icons resembles folder view in main window of \fBrdfm\fP but icons on
 desktop can "remember" their position. If you have two or more monitors then
 desktop background and set of icons will be shown on each of them. Icons
 positions will be remembered individually for each of monitors.
@@ -115,17 +115,17 @@ of items shown in menu://applications/ folder.
 .SH FILES
 .PD 0
 .TP
-.I ~/.config/pcmanfm/default
+.I ~/.config/rdfm/default
 The default configuration profile directory
 .TP
-.I ~/.config/pcmanfm/default/pcmanfm.conf
+.I ~/.config/rdfm/default/rdfm.conf
 The main configuration file
 .TP
-.I ~/.config/pcmanfm/default/desktop\-items\-0.conf
+.I ~/.config/rdfm/default/desktop\-items\-0.conf
 The desktop items layout for screen 0 (primary screen)
 
 .SH AUTHOR
-PCManFM is named after its author's nickname on the internet, PCMan. It was
+RDFM is named after its author's nickname on the internet, PCMan. It was
 written by Hong Jen Yee <pcman.tw@gmail.com>.
 
 This manual page was written by Tetralet <tetralet@debian.or.tw>

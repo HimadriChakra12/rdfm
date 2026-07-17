@@ -31,7 +31,7 @@
 #include <sys/types.h>
 #include <ctype.h>
 
-#include "pcmanfm.h"
+#include "rdfm.h"
 
 #include "app-config.h"
 #include "main-win.h"
@@ -188,7 +188,7 @@ static void on_location_activate(GtkEntry* entry, FmMainWin* win)
 
     /* FIXME: due to bug #650114 in GTK+, GtkEntry still call a
      * idle function for GtkEntryCompletion even if the completion
-     * is set to NULL. This causes crash in pcmanfm since libfm
+     * is set to NULL. This causes crash in rdfm since libfm
      * set GtkCompletition to NULL when FmPathEntry loses its
      * focus. Hence the bug is triggered when we set focus to
      * the folder view, which in turns causes FmPathEntry to lose focus.
@@ -217,7 +217,7 @@ static void on_path_bar_mode(GtkRadioAction *act, GtkRadioAction *cur, FmMainWin
     if (app_config->pathbar_mode_buttons != mode)
     {
         app_config->pathbar_mode_buttons = mode;
-        pcmanfm_save_config(FALSE);
+        rdfm_save_config(FALSE);
     }
     gtk_widget_set_visible(GTK_WIDGET(win->location), mode == 0);
     gtk_widget_set_visible(gtk_ui_manager_get_widget(win->ui, "/toolbar/Go"), mode == 0);
@@ -261,7 +261,7 @@ static void update_sort_menu(FmMainWin* win)
         else
         {
             app_config->sort_type = mode;
-            pcmanfm_save_config(FALSE);
+            rdfm_save_config(FALSE);
         }
     }
 #else
@@ -310,7 +310,7 @@ static void update_file_menu(FmMainWin* win, FmPath *path)
 {
     GtkAction *act;
     /* FmFolderView *fv = win->folder_view; */
-    gboolean can_term = pcmanfm_can_open_path_in_terminal(path);
+    gboolean can_term = rdfm_can_open_path_in_terminal(path);
 
     act = gtk_ui_manager_get_action(win->ui, "/menubar/ToolMenu/Term");
     gtk_action_set_sensitive(act, path && can_term);
@@ -565,7 +565,7 @@ static void on_tab_page_splitter_pos_changed(GtkPaned* paned, GParamSpec* ps, Fm
         return;
 
     app_config->splitter_pos = gtk_paned_get_position(paned);
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 
     /* apply the pos to all other pages as well */
     /* TODO: maybe we should allow different splitter pos for different pages later? */
@@ -621,7 +621,7 @@ static void on_side_pane_mode_changed(FmSidePane* sp, FmMainWin* win)
     {
         app_config->side_pane_mode = mode | (app_config->side_pane_mode & ~FM_SP_MODE_MASK);
         fm_config_emit_changed(FM_CONFIG(app_config), "side_pane_mode");
-        pcmanfm_save_config(FALSE);
+        rdfm_save_config(FALSE);
     }
 }
 
@@ -742,7 +742,7 @@ static void fm_main_win_init(FmMainWin *win)
 #endif
     GtkShadowType shadow_type;
 
-    pcmanfm_ref();
+    rdfm_ref();
     all_wins = g_slist_prepend(all_wins, win);
 
     /* every window should have its own window group.
@@ -1090,7 +1090,7 @@ static void fm_main_win_finalize(GObject *object)
     if (G_OBJECT_CLASS(fm_main_win_parent_class)->finalize)
         (* G_OBJECT_CLASS(fm_main_win_parent_class)->finalize)(object);
 
-    pcmanfm_unref();
+    rdfm_unref();
 }
 
 static void on_unrealize(GtkWidget* widget)
@@ -1104,12 +1104,12 @@ static void on_unrealize(GtkWidget* widget)
     {
         app_config->win_width = w;
         app_config->win_height = h;
-        pcmanfm_save_config(FALSE);
+        rdfm_save_config(FALSE);
     }
     if (win->maximized != app_config->maximized)
     {
         app_config->maximized = win->maximized;
-        pcmanfm_save_config(FALSE);
+        rdfm_save_config(FALSE);
     }
     (*GTK_WIDGET_CLASS(fm_main_win_parent_class)->unrealize)(widget);
 }
@@ -1118,7 +1118,7 @@ static void on_about_response(GtkDialog* dlg, gint response, GtkAboutDialog **dl
 {
     g_signal_handlers_disconnect_by_func(dlg, on_about_response, dlgptr);
     *dlgptr = NULL;
-    pcmanfm_unref();
+    rdfm_unref();
     gtk_widget_destroy(GTK_WIDGET(dlg));
 }
 
@@ -1137,7 +1137,7 @@ static void on_about(GtkAction* act, FmMainWin* win)
         g_string_free(comments, TRUE);
         g_object_unref(builder);
         g_signal_connect(about_dlg, "response", G_CALLBACK(on_about_response), (gpointer)&about_dlg);
-        pcmanfm_ref();
+        rdfm_ref();
     }
     gtk_window_present(GTK_WINDOW(about_dlg));
 }
@@ -1182,7 +1182,7 @@ static void on_open_in_terminal(GtkAction* act, FmMainWin* win)
     const FmNavHistoryItem* item = fm_nav_history_get_cur(win->nav_history);
     if(item && (path = item->path))
 #endif
-        pcmanfm_open_folder_in_terminal(GTK_WINDOW(win), path);
+        rdfm_open_folder_in_terminal(GTK_WINDOW(win), path);
 }
 
 #if FM_CHECK_VERSION(1, 0, 2)
@@ -1191,7 +1191,7 @@ static void on_search(GtkAction* act, FmMainWin* win)
     FmTabPage* page = win->current_page;
     FmPath* cwd = fm_tab_page_get_cwd(page);
     GList* l = g_list_append(NULL, cwd);
-    fm_launch_search_simple(GTK_WINDOW(win), NULL, l, pcmanfm_open_folder, NULL);
+    fm_launch_search_simple(GTK_WINDOW(win), NULL, l, rdfm_open_folder, NULL);
     g_list_free(l);
 }
 #endif
@@ -1252,7 +1252,7 @@ static void on_fullscreen(GtkToggleAction* act, FmMainWin* win)
         {
             app_config->win_width = w;
             app_config->win_height = h;
-            pcmanfm_save_config(FALSE);
+            rdfm_save_config(FALSE);
         }
         gtk_window_fullscreen(GTK_WINDOW(win));
     }
@@ -1301,7 +1301,7 @@ static void on_sort_by(GtkRadioAction* act, GtkRadioAction *cur, FmMainWin* win)
         else
         {
             app_config->sort_by = val;
-            pcmanfm_save_config(FALSE);
+            rdfm_save_config(FALSE);
         }
     }
 }
@@ -1324,7 +1324,7 @@ static inline void update_sort_type_for_page(FmTabPage *page, FmFolderView *fv, 
         else
         {
             app_config->sort_type = mode;
-            pcmanfm_save_config(FALSE);
+            rdfm_save_config(FALSE);
         }
     }
 }
@@ -1711,7 +1711,7 @@ static void on_open(GtkAction* act, FmMainWin* win)
     {
         GList* l = fm_file_info_list_peek_head_link(files);
         if (g_list_length(l) > 0)
-            fm_launch_files_simple(GTK_WINDOW(win), NULL, l, pcmanfm_open_folder, NULL);
+            fm_launch_files_simple(GTK_WINDOW(win), NULL, l, rdfm_open_folder, NULL);
         fm_file_info_list_unref(files);
     }
 }
@@ -1831,7 +1831,7 @@ static void on_show_toolbar(GtkToggleAction *action, FmMainWin *win)
 
     app_config->tb.visible = active;
     fm_config_emit_changed(fm_config, "toolsbar");
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 /* toolbar items: NewWin NewTab Prev (Hist) Next Up Home (Location) Go */
@@ -1841,7 +1841,7 @@ static void on_toolbar_new_win(GtkToggleAction *act, FmMainWin *win)
 
     app_config->tb.new_win = active;
     fm_config_emit_changed(fm_config, "toolsbar");
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 static void on_toolbar_new_tab(GtkToggleAction *act, FmMainWin *win)
@@ -1850,7 +1850,7 @@ static void on_toolbar_new_tab(GtkToggleAction *act, FmMainWin *win)
 
     app_config->tb.new_tab = active;
     fm_config_emit_changed(fm_config, "toolsbar");
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 static void on_toolbar_nav(GtkToggleAction *act, FmMainWin *win)
@@ -1859,7 +1859,7 @@ static void on_toolbar_nav(GtkToggleAction *act, FmMainWin *win)
 
     app_config->tb.nav = active;
     fm_config_emit_changed(fm_config, "toolsbar");
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 static void on_toolbar_home(GtkToggleAction *act, FmMainWin *win)
@@ -1868,7 +1868,7 @@ static void on_toolbar_home(GtkToggleAction *act, FmMainWin *win)
 
     app_config->tb.home = active;
     fm_config_emit_changed(fm_config, "toolsbar");
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 static void on_location(GtkAction* act, FmMainWin* win)
@@ -1970,7 +1970,7 @@ static void on_size_decrement(GtkAction *act, FmMainWin *win)
         fm_config->thumbnail_size = icon_sizes[i];
         fm_config_emit_changed(fm_config, "thumbnail_size");
     }
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 static void on_size_increment(GtkAction *act, FmMainWin *win)
@@ -2022,7 +2022,7 @@ static void on_size_increment(GtkAction *act, FmMainWin *win)
         fm_config->thumbnail_size = icon_sizes[i];
         fm_config_emit_changed(fm_config, "thumbnail_size");
     }
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 static void on_size_default(GtkAction *act, FmMainWin *win)
@@ -2056,7 +2056,7 @@ static void on_size_default(GtkAction *act, FmMainWin *win)
     default:
         return;
     }
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 /* This callback is only connected to folder view of current active tab page. */
@@ -2176,7 +2176,7 @@ static void on_folder_view_filter_changed(FmFolderView* fv, FmMainWin* win)
         else
         {
             app_config->show_hidden = active;
-            pcmanfm_save_config(FALSE);
+            rdfm_save_config(FALSE);
         }
     }
 }
@@ -2593,7 +2593,7 @@ static void on_show_side_pane(GtkToggleAction* act, FmMainWin* win)
         gtk_widget_hide(GTK_WIDGET(win->side_pane));
     }
     /* FIXME: propagate the event to other windows? */
-    pcmanfm_save_config(FALSE);
+    rdfm_save_config(FALSE);
 }
 
 static void on_dual_pane(GtkToggleAction* act, FmMainWin* win)
@@ -2663,6 +2663,6 @@ static void on_show_status(GtkToggleAction *action, FmMainWin *win)
     {
         app_config->show_statusbar = active;
         fm_config_emit_changed(fm_config, "statusbar");
-        pcmanfm_save_config(FALSE);
+        rdfm_save_config(FALSE);
     }
 }

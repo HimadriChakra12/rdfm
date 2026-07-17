@@ -1,7 +1,7 @@
 NULL=
 
 # GtkBuilder UI definition files
-uidir=$(datadir)/pcmanfm/ui
+uidir=$(datadir)/rdfm/ui
 ui_SOURCES = \
 	pref.glade \
 	desktop-pref.glade \

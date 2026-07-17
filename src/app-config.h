@@ -28,7 +28,7 @@
 #include <libfm/fm-gtk.h>
 #include <gtk/gtk.h>
 
-#include "pcmanfm.h"
+#include "rdfm.h"
 
 G_BEGIN_DECLS
 

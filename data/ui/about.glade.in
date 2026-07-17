@@ -6,10 +6,10 @@
     <property name="border_width">5</property>
     <property name="window_position">center-on-parent</property>
     <property name="type_hint">dialog</property>
-    <property name="program_name">PCManFM</property>
+    <property name="program_name">RDFM</property>
     <property name="version">@VERSION@</property>
     <property name="copyright" translatable="yes">Copyright (C) 2009 - 2025</property>
-    <property name="website">http://sourceforge.net/projects/pcmanfm</property>
+    <property name="website">http://sourceforge.net/projects/rdfm</property>
     <property name="license">PCMan File Manager
 
 Copyright &#169; 2009 - 2013 &#x6D2A;&#x4EFB;&#x8AED; (Hong Jen Yee)

@@ -1,8 +1,8 @@
 /*
- *      pcmanfm-modules.h
+ *      rdfm-modules.h
  *
- *      This file is a part of PCManFM package: definitions for modules.
- *      It can be used with LibFM and PCManFM version 1.2.0 or newer.
+ *      This file is a part of RDFM package: definitions for modules.
+ *      It can be used with LibFM and RDFM version 1.2.0 or newer.
  *
  *      Copyright 2014 Andriy Grytsenko (LStranger) <andrej@rep.kiev.ua>
  *
@@ -22,8 +22,8 @@
  *      MA 02110-1301, USA.
  */
 
-#ifndef __PCMANFM_MODULES_H__
-#define __PCMANFM_MODULES_H__
+#ifndef __RDFM_MODULES_H__
+#define __RDFM_MODULES_H__
 
 #include <libfm/fm.h>
 
@@ -63,4 +63,4 @@ extern FmTabPageStatusInit fm_module_init_tab_page_status;
 
 G_END_DECLS
 
-#endif /* __PCMANFM_MODULES_H__ */
+#endif /* __RDFM_MODULES_H__ */

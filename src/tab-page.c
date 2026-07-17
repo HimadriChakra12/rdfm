@@ -483,7 +483,7 @@ static void  on_folder_view_columns_changed(FmFolderView *fv, FmTabPage *page)
     {
         g_strfreev(app_config->columns);
         app_config->columns = cols;
-        pcmanfm_save_config(FALSE);
+        rdfm_save_config(FALSE);
     }
 }
 #endif
@@ -800,7 +800,7 @@ static void on_open_folder_in_terminal(GtkAction* act, FmMainWin* win)
     for(l=fm_file_info_list_peek_head_link(files);l;l=l->next)
     {
         FmFileInfo* fi = (FmFileInfo*)l->data;
-        pcmanfm_open_folder_in_terminal(GTK_WINDOW(win), fm_file_info_get_path(fi));
+        rdfm_open_folder_in_terminal(GTK_WINDOW(win), fm_file_info_get_path(fi));
     }
 }
 
@@ -815,7 +815,7 @@ static void update_files_popup(FmFolderView* fv, GtkWindow* win,
     for(l = fm_file_info_list_peek_head_link(files); l; l = l->next)
         if(!fm_file_info_is_dir(l->data))
             return; /* actions are valid only if all selected are directories */
-        else if (!pcmanfm_can_open_path_in_terminal(fm_file_info_get_path(l->data)))
+        else if (!rdfm_can_open_path_in_terminal(fm_file_info_get_path(l->data)))
             all_native = FALSE;
     g_object_set_qdata_full(G_OBJECT(act_grp), popup_qdata,
                             fm_file_info_list_ref(files),
@@ -866,7 +866,7 @@ void _update_sidepane_popup(FmSidePane* sp, GtkUIManager* ui,
                                  G_N_ELEMENTS(folder_menu_actions), win);
     /* we use the same XML for simplicity */
     gtk_ui_manager_add_ui_from_string(ui, folder_menu_xml, -1, NULL);
-    if (!pcmanfm_can_open_path_in_terminal(fm_file_info_get_path(file)))
+    if (!rdfm_can_open_path_in_terminal(fm_file_info_get_path(file)))
         gtk_action_set_visible(gtk_action_group_get_action(act_grp, "Term"), FALSE);
 }
 #endif

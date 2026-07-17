@@ -1,4 +1,4 @@
-# pcmanfm — minimal GTK3-only fork changes
+# rdfm — minimal GTK3-only fork changes
 
 ## What was removed
 
@@ -17,7 +17,7 @@
 
 ## What was added
 
-### Config-driven color system (`data/pcmanfm.conf`)
+### Config-driven color system (`data/rdfm.conf`)
 Colors in `[desktop]` accept any CSS color string — no GTK theme dependency:
 ```ini
 [desktop]

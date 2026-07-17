@@ -24,7 +24,7 @@
 #include <gtk/gtk.h>
 #include <libfm/fm.h>
 
-#include "pcmanfm.h"
+#include "rdfm.h"
 
 G_BEGIN_DECLS
 
@@ -145,9 +145,9 @@ void fm_tab_page_set_filter_pattern(FmTabPage *page, const char *pattern);
 #endif
 
 #if FM_CHECK_VERSION(1, 2, 0)
-#include "pcmanfm-modules.h"
+#include "rdfm-modules.h"
 
-extern GList *_tab_page_modules; /* in pcmanfm.c */
+extern GList *_tab_page_modules; /* in rdfm.c */
 #endif
 
 G_END_DECLS

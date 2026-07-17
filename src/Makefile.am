@@ -1,15 +1,15 @@
 NULL=
 
 AM_CPPFLAGS = \
-	-DPACKAGE_DATA_DIR=\""$(datadir)/pcmanfm"\" \
-	-DPACKAGE_UI_DIR=\""$(datadir)/pcmanfm/ui"\" \
-	-DPACKAGE_MODULES_DIR=\""$(libdir)/pcmanfm"\" \
+	-DPACKAGE_DATA_DIR=\""$(datadir)/rdfm"\" \
+	-DPACKAGE_UI_DIR=\""$(datadir)/rdfm/ui"\" \
+	-DPACKAGE_MODULES_DIR=\""$(libdir)/rdfm"\" \
 	-DPACKAGE_LOCALE_DIR=\""$(prefix)/$(DATADIRNAME)/locale"\"
 
-bin_PROGRAMS = pcmanfm
+bin_PROGRAMS = rdfm
 
-pcmanfm_SOURCES = \
-	pcmanfm.c \
+rdfm_SOURCES = \
+	rdfm.c \
 	app-config.c \
 	main-win.c \
 	tab-page.c \
@@ -23,7 +23,7 @@ pcmanfm_SOURCES = \
 EXTRA_DIST= \
 	main-win-ui.c \
 	desktop-ui.c \
-	pcmanfm.h \
+	rdfm.h \
 	app-config.h \
 	main-win.h \
 	tab-page.h \
@@ -35,9 +35,9 @@ EXTRA_DIST= \
 	gseal-gtk-compat.h \
 	$(NULL)
 
-include_HEADERS = pcmanfm-modules.h
+include_HEADERS = rdfm-modules.h
 
-pcmanfm_CFLAGS = \
+rdfm_CFLAGS = \
 	$(XLIB_CFLAGS) \
 	$(FM_CFLAGS) \
 	$(G_CAST_CHECKS) \
@@ -45,14 +45,14 @@ pcmanfm_CFLAGS = \
 	-Werror-implicit-function-declaration \
 	$(NULL)
 
-pcmanfm_LDADD = \
+rdfm_LDADD = \
 	$(XLIB_LIBS) \
 	$(FM_LIBS) \
 	$(NULL)
 
 # prepare modules directory
 install-exec-local:
-	$(MKDIR_P) "$(DESTDIR)$(libdir)/pcmanfm"
+	$(MKDIR_P) "$(DESTDIR)$(libdir)/rdfm"
 
 uninstall-local:
-	-rmdir "$(DESTDIR)$(libdir)/pcmanfm"
+	-rmdir "$(DESTDIR)$(libdir)/rdfm"
