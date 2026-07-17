@@ -90,11 +90,7 @@ static void  on_folder_view_columns_changed(FmFolderView *fv, FmTabPage *page);
 static gboolean on_folder_view_focus_in(GtkWidget *widget, GdkEvent *event, FmTabPage *page);
 static char* format_status_text(FmTabPage* page);
 
-#if GTK_CHECK_VERSION(3, 0, 0)
 static void fm_tab_page_destroy(GtkWidget *page);
-#else
-static void fm_tab_page_destroy(GtkObject *page);
-#endif
 
 static void fm_tab_page_realize(GtkWidget *page);
 static void fm_tab_page_unrealize(GtkWidget *page);
@@ -107,12 +103,7 @@ static void fm_tab_page_class_init(FmTabPageClass *klass)
 {
     GObjectClass *g_object_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-#if GTK_CHECK_VERSION(3, 0, 0)
     widget_class->destroy = fm_tab_page_destroy;
-#else
-    GtkObjectClass *gtk_object_class = GTK_OBJECT_CLASS(klass);
-    gtk_object_class->destroy = fm_tab_page_destroy;
-#endif
     g_object_class->finalize = fm_tab_page_finalize;
     widget_class->realize = fm_tab_page_realize;
     widget_class->unrealize = fm_tab_page_unrealize;
@@ -271,11 +262,7 @@ static void on_home_path_changed(FmAppConfig *cfg, FmSidePane *sp)
 }
 #endif
 
-#if GTK_CHECK_VERSION(3, 0, 0)
 void fm_tab_page_destroy(GtkWidget *object)
-#else
-void fm_tab_page_destroy(GtkObject *object)
-#endif
 {
     FmTabPage* page = FM_TAB_PAGE(object);
 
@@ -335,13 +322,8 @@ void fm_tab_page_destroy(GtkObject *object)
         page->dd = NULL;
     }
 
-#if GTK_CHECK_VERSION(3, 0, 0)
     if(GTK_WIDGET_CLASS(fm_tab_page_parent_class)->destroy)
         (*GTK_WIDGET_CLASS(fm_tab_page_parent_class)->destroy)(object);
-#else
-    if(GTK_OBJECT_CLASS(fm_tab_page_parent_class)->destroy)
-        (*GTK_OBJECT_CLASS(fm_tab_page_parent_class)->destroy)(object);
-#endif
 }
 
 static void on_folder_content_changed(FmFolder* folder, FmTabPage* page)
@@ -965,9 +947,6 @@ static void fm_tab_page_init(FmTabPage *page)
     /* create tab label */
     tab_label = (FmTabLabel*)fm_tab_label_new("");
     gtk_label_set_max_width_chars(tab_label->label, app_config->max_tab_chars);
-#if ! GTK_CHECK_VERSION(3, 0, 0)
-    gtk_label_set_ellipsize(tab_label->label, PANGO_ELLIPSIZE_END);
-#endif
     page->tab_label = tab_label;
 
     atk_widget = gtk_widget_get_accessible(GTK_WIDGET(folder_view));

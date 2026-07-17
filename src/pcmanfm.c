@@ -273,19 +273,22 @@ int main(int argc, char** argv)
     fm_app_config_load_from_profile(FM_APP_CONFIG(config), profile);
     g_signal_connect(config, "changed::saved_search", G_CALLBACK(on_config_changed), NULL);
 
+    /* apply theme overrides from config — works regardless of GTK version */
+    {
+        GtkSettings *settings = gtk_settings_get_default();
+        if(app_config->icon_theme && app_config->icon_theme[0])
+            g_object_set(settings, "gtk-icon-theme-name", app_config->icon_theme, NULL);
+        if(app_config->gtk_theme && app_config->gtk_theme[0])
+            g_object_set(settings, "gtk-theme-name", app_config->gtk_theme, NULL);
+    }
+
     /* the main part */
     if(pcmanfm_run(gdk_screen_get_number(gdk_screen_get_default())))
     {
         first_run = FALSE;
         fm_volume_manager_init();
-#if !GTK_CHECK_VERSION(3, 6, 0)
-        GDK_THREADS_ENTER();
-#endif
         gtk_main();
         /* g_debug("main loop ended"); */
-#if !GTK_CHECK_VERSION(3, 6, 0)
-        GDK_THREADS_LEAVE();
-#endif
 
         if(save_config_idle)
         {

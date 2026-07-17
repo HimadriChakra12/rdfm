@@ -75,9 +75,9 @@ typedef struct
     gboolean wallpaper_common;
     gint configured : 1;
     gint changed : 1;
-    GdkColor desktop_bg;
-    GdkColor desktop_fg;
-    GdkColor desktop_shadow;
+    GdkRGBA desktop_bg;
+    GdkRGBA desktop_fg;
+    GdkRGBA desktop_shadow;
     char* desktop_font;
     char *folder; /* NULL if default, empty if no icons, else path */
     gboolean show_wm_menu;
@@ -148,6 +148,10 @@ struct _FmAppConfig
 #if FM_CHECK_VERSION(1, 2, 0)
     char *home_path;
 #endif
+
+    /* theme overrides from config (independent of GTK settings) */
+    char *icon_theme;   /* e.g. "Papirus", "hicolor"; NULL = system default */
+    char *gtk_theme;    /* e.g. "Adwaita", "Arc"; NULL = system default */
 
     /*char* su_cmd;*/
 

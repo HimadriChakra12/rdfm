@@ -465,6 +465,8 @@ static void fm_app_config_finalize(GObject *object)
 #if FM_CHECK_VERSION(1, 2, 0)
     g_free(cfg->home_path);
 #endif
+    g_free(cfg->icon_theme);
+    g_free(cfg->gtk_theme);
 
     G_OBJECT_CLASS(fm_app_config_parent_class)->finalize(object);
 }
@@ -488,7 +490,15 @@ static void fm_app_config_init(FmAppConfig *cfg)
     cfg->mount_removable = TRUE;
     cfg->autorun = TRUE;
 
-    cfg->desktop_section.desktop_fg.red = cfg->desktop_section.desktop_fg.green = cfg->desktop_section.desktop_fg.blue = 65535;
+    /* white foreground, black background, black shadow — GdkRGBA 0.0-1.0 */
+    cfg->desktop_section.desktop_fg.red   = 1.0;
+    cfg->desktop_section.desktop_fg.green = 1.0;
+    cfg->desktop_section.desktop_fg.blue  = 1.0;
+    cfg->desktop_section.desktop_fg.alpha = 1.0;
+    cfg->desktop_section.desktop_bg.alpha = 1.0;
+    cfg->desktop_section.desktop_shadow.alpha = 1.0;
+    cfg->icon_theme = NULL;  /* system default */
+    cfg->gtk_theme  = NULL;  /* system default */
     cfg->win_width = 640;
     cfg->win_height = 480;
     cfg->splitter_pos = 150;
@@ -550,8 +560,13 @@ void fm_app_config_load_desktop_config(GKeyFile *kf, const char *group, FmDeskto
     if (!g_key_file_has_group(kf, group))
         return;
 
-    /* set some defaults, assuming config is zeroed now */
-    cfg->desktop_fg.red = cfg->desktop_fg.green = cfg->desktop_fg.blue = 65535;
+    /* white fg, black bg/shadow — GdkRGBA 0.0-1.0 */
+    cfg->desktop_fg.red   = 1.0;
+    cfg->desktop_fg.green = 1.0;
+    cfg->desktop_fg.blue  = 1.0;
+    cfg->desktop_fg.alpha = 1.0;
+    cfg->desktop_bg.alpha = 1.0;
+    cfg->desktop_shadow.alpha = 1.0;
 #if FM_CHECK_VERSION(1, 0, 2)
 #if FM_CHECK_VERSION(1, 2, 0)
     cfg->desktop_sort_type = FM_SORT_ASCENDING | FM_SORT_NO_FOLDER_FIRST;
@@ -620,19 +635,19 @@ void fm_app_config_load_desktop_config(GKeyFile *kf, const char *group, FmDeskto
     tmp = g_key_file_get_string(kf, group, "desktop_bg", NULL);
     if(tmp)
     {
-        gdk_color_parse(tmp, &cfg->desktop_bg);
+        gdk_rgba_parse(&cfg->desktop_bg, tmp);
         g_free(tmp);
     }
     tmp = g_key_file_get_string(kf, group, "desktop_fg", NULL);
     if(tmp)
     {
-        gdk_color_parse(tmp, &cfg->desktop_fg);
+        gdk_rgba_parse(&cfg->desktop_fg, tmp);
         g_free(tmp);
     }
     tmp = g_key_file_get_string(kf, group, "desktop_shadow", NULL);
     if(tmp)
     {
-        gdk_color_parse(tmp, &cfg->desktop_shadow);
+        gdk_rgba_parse(&cfg->desktop_shadow, tmp);
         g_free(tmp);
     }
 
@@ -791,6 +806,22 @@ void fm_app_config_load_from_key_file(FmAppConfig* cfg, GKeyFile* kf)
         g_strfreev(tmpv);
     }
     fm_key_file_get_bool(kf, "ui", "pathbar_mode_buttons", &cfg->pathbar_mode_buttons);
+
+    /* theme overrides — loaded from [ui] section */
+    g_free(cfg->icon_theme);
+    cfg->icon_theme = g_key_file_get_string(kf, "ui", "icon_theme", NULL);
+    if(cfg->icon_theme && cfg->icon_theme[0] == '\0')
+    {
+        g_free(cfg->icon_theme);
+        cfg->icon_theme = NULL;
+    }
+    g_free(cfg->gtk_theme);
+    cfg->gtk_theme = g_key_file_get_string(kf, "ui", "gtk_theme", NULL);
+    if(cfg->gtk_theme && cfg->gtk_theme[0] == '\0')
+    {
+        g_free(cfg->gtk_theme);
+        cfg->gtk_theme = NULL;
+    }
 }
 
 void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
@@ -1047,18 +1078,19 @@ void fm_app_config_save_desktop_config(GString *buf, const char *group, FmDeskto
     }
     if (cfg->wallpaper_common && cfg->wallpaper)
         g_string_append_printf(buf, "wallpaper=%s\n", cfg->wallpaper);
+    /* colors stored as #rrggbb hex; alpha always 1.0 */
     g_string_append_printf(buf, "desktop_bg=#%02x%02x%02x\n",
-                           cfg->desktop_bg.red/257,
-                           cfg->desktop_bg.green/257,
-                           cfg->desktop_bg.blue/257);
+                           (int)(cfg->desktop_bg.red   * 255),
+                           (int)(cfg->desktop_bg.green * 255),
+                           (int)(cfg->desktop_bg.blue  * 255));
     g_string_append_printf(buf, "desktop_fg=#%02x%02x%02x\n",
-                           cfg->desktop_fg.red/257,
-                           cfg->desktop_fg.green/257,
-                           cfg->desktop_fg.blue/257);
+                           (int)(cfg->desktop_fg.red   * 255),
+                           (int)(cfg->desktop_fg.green * 255),
+                           (int)(cfg->desktop_fg.blue  * 255));
     g_string_append_printf(buf, "desktop_shadow=#%02x%02x%02x\n",
-                           cfg->desktop_shadow.red/257,
-                           cfg->desktop_shadow.green/257,
-                           cfg->desktop_shadow.blue/257);
+                           (int)(cfg->desktop_shadow.red   * 255),
+                           (int)(cfg->desktop_shadow.green * 255),
+                           (int)(cfg->desktop_shadow.blue  * 255));
     if(cfg->desktop_font && *cfg->desktop_font)
         g_string_append_printf(buf, "desktop_font=%s\n", cfg->desktop_font);
     if(cfg->folder)
@@ -1172,6 +1204,10 @@ void fm_app_config_save_profile(FmAppConfig* cfg, const char* name)
         g_string_append_c(buf, '\n');
         g_string_append_printf(buf, "show_statusbar=%d\n", cfg->show_statusbar);
         g_string_append_printf(buf, "pathbar_mode_buttons=%d\n", cfg->pathbar_mode_buttons);
+        if(cfg->icon_theme && cfg->icon_theme[0])
+            g_string_append_printf(buf, "icon_theme=%s\n", cfg->icon_theme);
+        if(cfg->gtk_theme && cfg->gtk_theme[0])
+            g_string_append_printf(buf, "gtk_theme=%s\n", cfg->gtk_theme);
 
         path = g_build_filename(dir_path, "pcmanfm.conf", NULL);
         g_file_set_contents(path, buf->str, buf->len, NULL);

@@ -74,11 +74,7 @@ struct _FmBackgroundCache
 {
     FmBackgroundCache *next;
     char *filename;
-#if GTK_CHECK_VERSION(3, 0, 0)
     cairo_surface_t *bg;
-#else
-    GdkPixmap *bg;
-#endif
     FmWallpaperMode wallpaper_mode;
     time_t mtime;
 };
@@ -1820,30 +1816,17 @@ static void queue_layout_items(FmDesktop* desktop)
 
 static void paint_item(FmDesktop* self, FmDesktopItem* item, cairo_t* cr, GdkRectangle* expose_area, GdkPixbuf* icon)
 {
-#if GTK_CHECK_VERSION(3, 0, 0)
     GtkStyleContext* style;
-#else
-    GtkStyle* style;
-#endif
     GtkWidget* widget = (GtkWidget*)self;
     GtkCellRendererState state = 0;
-#if GTK_CHECK_VERSION(3, 0, 0)
     GdkRGBA rgba;
-#else
-    GdkWindow* window;
-#endif
     int text_x, text_y;
 
     /* don't draw dragged items on desktop, they are moved with mouse */
     if (item->is_selected && self->dragging)
         return;
 
-#if GTK_CHECK_VERSION(3, 0, 0)
     style = gtk_widget_get_style_context(widget);
-#else
-    style = gtk_widget_get_style(widget);
-    window = gtk_widget_get_window(widget);
-#endif
 
     pango_layout_set_text(self->pl, NULL, 0);
     pango_layout_set_width(self->pl, self->pango_text_w);
@@ -1861,29 +1844,21 @@ static void paint_item(FmDesktop* self, FmDesktopItem* item, cairo_t* cr, GdkRec
 
         cairo_save(cr);
         gdk_cairo_rectangle(cr, &item->text_rect);
-#if GTK_CHECK_VERSION(3, 0, 0)
         gtk_style_context_get_background_color(style, GTK_STATE_FLAG_SELECTED, &rgba);
         gdk_cairo_set_source_rgba(cr, &rgba);
-#else
-        gdk_cairo_set_source_color(cr, &style->bg[GTK_STATE_SELECTED]);
-#endif
         cairo_clip(cr);
         cairo_paint(cr);
         cairo_restore(cr);
-#if GTK_CHECK_VERSION(3, 0, 0)
         gtk_style_context_get_color(style, GTK_STATE_FLAG_SELECTED, &rgba);
         gdk_cairo_set_source_rgba(cr, &rgba);
-#else
-        gdk_cairo_set_source_color(cr, &style->fg[GTK_STATE_SELECTED]);
-#endif
     }
     else
     {
         /* the shadow */
-        gdk_cairo_set_source_color(cr, &self->conf.desktop_shadow);
+        gdk_cairo_set_source_rgba(cr, &self->conf.desktop_shadow);
         cairo_move_to(cr, text_x + 1, text_y + 1);
         pango_cairo_show_layout(cr, self->pl);
-        gdk_cairo_set_source_color(cr, &self->conf.desktop_fg);
+        gdk_cairo_set_source_rgba(cr, &self->conf.desktop_fg);
     }
     /* real text */
     cairo_move_to(cr, text_x, text_y);
@@ -1892,12 +1867,7 @@ static void paint_item(FmDesktop* self, FmDesktopItem* item, cairo_t* cr, GdkRec
     pango_layout_set_text(self->pl, NULL, 0);
 
     if(item == self->focus && gtk_widget_has_focus(widget))
-#if GTK_CHECK_VERSION(3, 0, 0)
         gtk_render_focus(style, cr,
-#else
-        gtk_paint_focus(style, window, gtk_widget_get_state(widget),
-                        expose_area, widget, "icon_view",
-#endif
                         item->text_rect.x, item->text_rect.y, item->text_rect.width, item->text_rect.height);
 
     if(item == self->hover_item) /* hovered */
@@ -1907,11 +1877,7 @@ static void paint_item(FmDesktop* self, FmDesktopItem* item, cairo_t* cr, GdkRec
 
     /* draw the icon */
     g_object_set(self->icon_render, "pixbuf", icon, "info", item->fi, NULL);
-#if GTK_CHECK_VERSION(3, 0, 0)
     gtk_cell_renderer_render(GTK_CELL_RENDERER(self->icon_render), cr, widget, &item->icon_rect, &item->icon_rect, state);
-#else
-    gtk_cell_renderer_render(GTK_CELL_RENDERER(self->icon_render), window, widget, &item->icon_rect, &item->icon_rect, expose_area, state);
-#endif
 }
 
 static void redraw_item(FmDesktop* desktop, FmDesktopItem* item)
@@ -2054,8 +2020,7 @@ static void paint_rubber_banding_rect(FmDesktop* self, cairo_t* cr, GdkRectangle
 {
     GtkWidget* widget = (GtkWidget*)self;
     GdkRectangle rect;
-    GdkColor clr;
-    guchar alpha;
+    GdkRGBA clr;
 
     calc_rubber_banding_rect(self, self->rubber_bending_x, self->rubber_bending_y, &rect);
 
@@ -2064,35 +2029,28 @@ static void paint_rubber_banding_rect(FmDesktop* self, cairo_t* cr, GdkRectangle
 
     if(!gdk_rectangle_intersect(expose_area, &rect, &rect))
         return;
-/*
-    gtk_widget_style_get(icon_view,
-                        "selection-box-color", &clr,
-                        "selection-box-alpha", &alpha,
-                        NULL);
-*/
-    clr = gtk_widget_get_style (widget)->base[GTK_STATE_SELECTED];
-    alpha = 64;  /* FIXME: should be themable in the future */
+
+    gtk_style_context_get_background_color(gtk_widget_get_style_context(widget),
+                                           GTK_STATE_FLAG_SELECTED, &clr);
+    clr.alpha = 0.25; /* semi-transparent selection box */
 
     cairo_save(cr);
-    cairo_set_source_rgba(cr, (gdouble)clr.red/65535, (gdouble)clr.green/65536, (gdouble)clr.blue/65535, (gdouble)alpha/100);
+    gdk_cairo_set_source_rgba(cr, &clr);
     gdk_cairo_rectangle(cr, &rect);
-    cairo_clip (cr);
-    cairo_paint (cr);
-    gdk_cairo_set_source_color(cr, &clr);
-    cairo_rectangle (cr, rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1);
+    cairo_clip(cr);
+    cairo_paint(cr);
+    clr.alpha = 1.0;
+    gdk_cairo_set_source_rgba(cr, &clr);
+    cairo_rectangle(cr, rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1);
     cairo_stroke(cr);
     cairo_restore(cr);
 }
 
 static void _free_cache_image(FmBackgroundCache *cache)
 {
-#if GTK_CHECK_VERSION(3, 0, 0)
     XFreePixmap(cairo_xlib_surface_get_display(cache->bg),
                 cairo_xlib_surface_get_drawable(cache->bg));
     cairo_surface_destroy(cache->bg);
-#else
-    g_object_unref(cache->bg);
-#endif
     cache->bg = NULL;
     cache->wallpaper_mode = FM_WP_COLOR; /* for cache check */
 }
@@ -2119,9 +2077,7 @@ static void update_background(FmDesktop* desktop, int is_it)
     GdkWindow* root = gdk_screen_get_root_window(screen);
     GdkWindow *window = gtk_widget_get_window(widget);
     FmBackgroundCache *cache;
-#if GTK_CHECK_VERSION(3, 0, 0)
     cairo_pattern_t *pattern;
-#endif
 
     Display* xdisplay;
     Pixmap xpixmap;
@@ -2252,19 +2208,11 @@ static void update_background(FmDesktop* desktop, int is_it)
 
     if(!cache) /* solid color only */
     {
-#if GTK_CHECK_VERSION(3, 0, 0)
-        pattern = cairo_pattern_create_rgb(desktop->conf.desktop_bg.red / 65535.0,
-                                           desktop->conf.desktop_bg.green / 65535.0,
-                                           desktop->conf.desktop_bg.blue / 65535.0);
+        pattern = cairo_pattern_create_rgb(desktop->conf.desktop_bg.red,
+                                           desktop->conf.desktop_bg.green,
+                                           desktop->conf.desktop_bg.blue);
         gdk_window_set_background_pattern(window, pattern);
         cairo_pattern_destroy(pattern);
-#else
-        GdkColor bg = desktop->conf.desktop_bg;
-
-        gdk_colormap_alloc_color(gdk_drawable_get_colormap(window), &bg, FALSE, TRUE);
-        gdk_window_set_back_pixmap(window, NULL, FALSE);
-        gdk_window_set_background(window, &bg);
-#endif
         gdk_window_invalidate_rect(window, NULL, TRUE);
         return;
     }
@@ -2298,7 +2246,6 @@ static void update_background(FmDesktop* desktop, int is_it)
                 dest_h = geom.height;
             }
         }
-#if GTK_CHECK_VERSION(3, 0, 0)
         xdisplay = GDK_WINDOW_XDISPLAY(root);
         /* this code is taken from libgnome-desktop */
         xpixmap = XCreatePixmap(xdisplay, RootWindow(xdisplay, screen_num),
@@ -2307,15 +2254,11 @@ static void update_background(FmDesktop* desktop, int is_it)
                                               GDK_VISUAL_XVISUAL(gdk_screen_get_system_visual(screen)),
                                               dest_w, dest_h);
         cr = cairo_create(cache->bg);
-#else
-        cache->bg = gdk_pixmap_new(window, dest_w, dest_h, -1);
-        cr = gdk_cairo_create(cache->bg);
-#endif
         if(gdk_pixbuf_get_has_alpha(pix)
             || desktop->conf.wallpaper_mode == FM_WP_CENTER
             || desktop->conf.wallpaper_mode == FM_WP_FIT)
         {
-            gdk_cairo_set_source_color(cr, &desktop->conf.desktop_bg);
+            gdk_cairo_set_source_rgba(cr, &desktop->conf.desktop_bg);
             cairo_rectangle(cr, 0, 0, dest_w, dest_h);
             cairo_fill(cr);
         }
@@ -2363,23 +2306,15 @@ static void update_background(FmDesktop* desktop, int is_it)
         cairo_destroy(cr);
         cache->wallpaper_mode = desktop->conf.wallpaper_mode;
     }
-#if GTK_CHECK_VERSION(3, 0, 0)
     pattern = cairo_pattern_create_for_surface(cache->bg);
     gdk_window_set_background_pattern(window, pattern);
     cairo_pattern_destroy(pattern);
-#else
-    gdk_window_set_back_pixmap(window, cache->bg, FALSE);
-#endif
 
     /* set root map here */
     xdisplay = GDK_WINDOW_XDISPLAY(root);
     xroot = RootWindow(xdisplay, screen_num);
 
-#if GTK_CHECK_VERSION(3, 0, 0)
     xpixmap = cairo_xlib_surface_get_drawable(cache->bg);
-#else
-    xpixmap = GDK_WINDOW_XWINDOW(cache->bg);
-#endif
 
     XChangeProperty(xdisplay, GDK_WINDOW_XID(root),
                     XA_XROOTMAP_ID, XA_PIXMAP, 32, PropModeReplace, (guchar*)&xpixmap, 1);
@@ -2522,77 +2457,11 @@ static void update_working_area(FmDesktop* desktop)
 {
     GdkScreen* screen = gtk_widget_get_screen((GtkWidget*)desktop);
     GdkRectangle geom;
-#if GTK_CHECK_VERSION(3, 4, 0)
     gdk_screen_get_monitor_workarea(screen, desktop->monitor, &desktop->working_area);
     /* we need working area coordinates within the monitor not the screen */
     gdk_screen_get_monitor_geometry(screen, desktop->monitor, &geom);
     desktop->working_area.x -= geom.x;
     desktop->working_area.y -= geom.y;
-#else
-    GdkWindow* root = gdk_screen_get_root_window(screen);
-    Atom ret_type;
-    gulong len, after;
-    int format;
-    guchar* prop;
-    guint32 n_desktops, cur_desktop;
-    gulong* working_area;
-
-    /* default to screen size */
-    gdk_screen_get_monitor_geometry(screen, desktop->monitor, &geom);
-    desktop->working_area.width = geom.width;
-    desktop->working_area.height = geom.height;
-
-    if(XGetWindowProperty(GDK_WINDOW_XDISPLAY(root), GDK_WINDOW_XID(root),
-                       XA_NET_NUMBER_OF_DESKTOPS, 0, 1, False, XA_CARDINAL, &ret_type,
-                       &format, &len, &after, &prop) != Success)
-        goto _out;
-    if(!prop)
-        goto _out;
-    n_desktops = *(guint32*)prop;
-    XFree(prop);
-
-    if(XGetWindowProperty(GDK_WINDOW_XDISPLAY(root), GDK_WINDOW_XID(root),
-                       XA_NET_CURRENT_DESKTOP, 0, 1, False, XA_CARDINAL, &ret_type,
-                       &format, &len, &after, &prop) != Success)
-        goto _out;
-    if(!prop)
-        goto _out;
-    cur_desktop = *(guint32*)prop;
-    XFree(prop);
-
-    if(XGetWindowProperty(GDK_WINDOW_XDISPLAY(root), GDK_WINDOW_XID(root),
-                       XA_NET_WORKAREA, 0, 4 * 32, False, AnyPropertyType, &ret_type,
-                       &format, &len, &after, &prop) != Success)
-        goto _out;
-    if(ret_type == None || format == 0 || len != n_desktops*4)
-    {
-        if(prop)
-            XFree(prop);
-        goto _out;
-    }
-    working_area = ((gulong*)prop) + cur_desktop * 4;
-
-    desktop->working_area.x = (gint)working_area[0] - geom.x;
-    desktop->working_area.y = (gint)working_area[1] - geom.y;
-    if(desktop->working_area.x > 0 &&
-       desktop->working_area.x < desktop->working_area.width)
-        desktop->working_area.width -= desktop->working_area.x;
-    if(desktop->working_area.y > 0 &&
-       desktop->working_area.y < desktop->working_area.height)
-        desktop->working_area.height -= desktop->working_area.y;
-    if(desktop->working_area.x + (gint)working_area[2] < desktop->working_area.width)
-        desktop->working_area.width = working_area[2] + desktop->working_area.x;
-    if(desktop->working_area.y + (gint)working_area[3] < desktop->working_area.height)
-        desktop->working_area.height = working_area[3] + desktop->working_area.y;
-    g_debug("got working area: %d.%d.%d.%d", desktop->working_area.x, desktop->working_area.y,
-            desktop->working_area.width, desktop->working_area.height);
-    /* we need working area coordinates within the monitor not the screen */
-    desktop->working_area.x = MAX(0, desktop->working_area.x);
-    desktop->working_area.y = MAX(0, desktop->working_area.y);
-
-    XFree(prop);
-_out:
-#endif
     queue_layout_items(desktop);
     return;
 }
@@ -3171,34 +3040,19 @@ static void forward_event_to_rootwin(GdkScreen *gscreen, GdkEvent *event)
 }
 
 
-#if GTK_CHECK_VERSION(3, 0, 0)
 static gboolean on_draw(GtkWidget* w, cairo_t* cr)
-#else
-static gboolean on_expose(GtkWidget* w, GdkEventExpose* evt)
-#endif
 {
     FmDesktop* self = (FmDesktop*)w;
-#if !GTK_CHECK_VERSION(3, 0, 0)
-    cairo_t* cr;
-#endif
     GtkTreeModel* model = self->model ? GTK_TREE_MODEL(self->model) : NULL;
     GtkTreeIter it;
     GdkRectangle area;
 
-#if GTK_CHECK_VERSION(3, 0, 0)
     if(G_UNLIKELY(!gtk_cairo_should_draw_window(cr, gtk_widget_get_window(w))))
         return FALSE;
 
     cairo_save(cr);
     gtk_cairo_transform_to_window(cr, w, gtk_widget_get_window(w));
     gdk_cairo_get_clip_rectangle(cr, &area);
-#else
-    if(G_UNLIKELY(! gtk_widget_get_visible (w) || ! gtk_widget_get_mapped (w)))
-        return TRUE;
-
-    cr = gdk_cairo_create(gtk_widget_get_window(w));
-    area = evt->area;
-#endif
     if(self->rubber_bending)
         paint_rubber_banding_rect(self, cr, &area);
 
@@ -3229,11 +3083,7 @@ static gboolean on_expose(GtkWidget* w, GdkEventExpose* evt)
         }
     }
     while(gtk_tree_model_iter_next(model, &it));
-#if GTK_CHECK_VERSION(3, 0, 0)
     cairo_restore(cr);
-#else
-    cairo_destroy(cr);
-#endif
 
     return TRUE;
 }
@@ -3279,13 +3129,11 @@ static void on_size_allocate(GtkWidget* w, GtkAllocation* alloc)
     /* scale the wallpaper */
     if(gtk_widget_get_realized(w))
     {
-#if GTK_CHECK_VERSION(3, 0, 0)
         /* bug SF#958: with GTK 3.8+ font is reset to default after realizing
            so let enforce font description on it right away */
         PangoFontDescription *font_desc = pango_font_description_from_string(self->conf.desktop_font);
         pango_context_set_font_description(pc, font_desc);
         pango_font_description_free(font_desc);
-#endif
         /* bug #3614866: after monitor geometry was changed we need to redraw
            the background invalidating all the cache */
         _clear_bg_cache(self);
@@ -3296,7 +3144,6 @@ static void on_size_allocate(GtkWidget* w, GtkAllocation* alloc)
     GTK_WIDGET_CLASS(fm_desktop_parent_class)->size_allocate(w, alloc);
 }
 
-#if GTK_CHECK_VERSION(3, 0, 0)
 static void on_get_preferred_width(GtkWidget *w, gint *minimal_width, gint *natural_width)
 {
     GdkScreen* scr = gtk_widget_get_screen(w);
@@ -3314,17 +3161,6 @@ static void on_get_preferred_height(GtkWidget *w, gint *minimal_height, gint *na
     gdk_screen_get_monitor_geometry(scr, monitor, &geom);
     *minimal_height = *natural_height = geom.height;
 }
-#else
-static void on_size_request(GtkWidget* w, GtkRequisition* req)
-{
-    GdkScreen* scr = gtk_widget_get_screen(w);
-    gint monitor = FM_DESKTOP(w)->monitor;
-    GdkRectangle geom;
-    gdk_screen_get_monitor_geometry(scr, monitor, &geom);
-    req->width = geom.width;
-    req->height = geom.height;
-}
-#endif
 
 static void _stop_rubberbanding(FmDesktop *self, gint x, gint y)
 {
@@ -3671,9 +3507,6 @@ static void send_focus_change(GtkWidget *widget, gboolean in)
   fevent->focus_change.window = g_object_ref (gtk_widget_get_window (widget));
   fevent->focus_change.in = in;
 
-#if GTK_CHECK_VERSION(2, 22, 0)
-  gtk_widget_send_focus_change (widget, fevent);
-#else
   g_object_ref (widget);
   if (in)
     GTK_OBJECT_FLAGS (widget) |= GTK_HAS_FOCUS;
@@ -3682,7 +3515,6 @@ static void send_focus_change(GtkWidget *widget, gboolean in)
   gtk_widget_event (widget, fevent);
   g_object_notify (G_OBJECT (widget), "has-focus");
   g_object_unref (widget);
-#endif
 
   gdk_event_free (fevent);
 }
@@ -3762,12 +3594,7 @@ static void desktop_search_move(GtkWidget *widget, FmDesktop *desktop,
     /* let find matched item now */
     if (move_up)
     {
-#if GTK_CHECK_VERSION(3, 0, 0)
         while (!found && gtk_tree_model_iter_previous(model, &it))
-#else
-        GtkTreePath *tp = gtk_tree_model_get_path(model, &it);
-        while (!found && gtk_tree_path_prev(tp) && gtk_tree_model_get_iter(model, &it, tp))
-#endif
         {
             item = fm_folder_model_get_item_userdata(desktop->model, &it);
             casefold = g_utf8_casefold(fm_file_info_get_disp_name(item->fi), -1);
@@ -3776,9 +3603,6 @@ static void desktop_search_move(GtkWidget *widget, FmDesktop *desktop,
             found = (strncmp(name, key, strlen(key)) == 0);
             g_free(name);
         }
-#if !GTK_CHECK_VERSION(3, 0, 0)
-        gtk_tree_path_free(tp);
-#endif
     }
     else
     {
@@ -3897,13 +3721,8 @@ static void desktop_search_activate(GtkEntry *entry, FmDesktop *desktop)
     }
 }
 
-#if GTK_CHECK_VERSION(2, 20, 0)
-static void desktop_search_preedit_changed(GtkEntry *entry, gchar *preedit,
-                                           FmDesktop *desktop)
-#else
 static void desktop_search_preedit_changed(GtkIMContext *im_context,
                                            FmDesktop *desktop)
-#endif
 {
     desktop->search_imcontext_changed = TRUE;
 
@@ -3920,11 +3739,7 @@ static void desktop_search_position(FmDesktop *desktop)
     /* make sure the search dialog is realized */
     gtk_widget_realize(desktop->search_window);
 
-#if GTK_CHECK_VERSION(3, 0, 0)
     gtk_widget_get_preferred_size(desktop->search_window, NULL, &requisition);
-#else
-    gtk_widget_size_request(desktop->search_window, &requisition);
-#endif
 
     /* put it into right upper corner */
     gdk_screen_get_monitor_geometry(gtk_widget_get_screen((GtkWidget*)desktop),
@@ -4017,13 +3832,8 @@ static void desktop_search_ensure_window(FmDesktop *desktop)
     /* allocate the search entry widget */
     desktop->search_entry = gtk_entry_new();
     g_signal_connect(desktop->search_entry, "activate", G_CALLBACK(desktop_search_activate), desktop);
-#if GTK_CHECK_VERSION(2, 20, 0)
-    g_signal_connect(desktop->search_entry, "preedit-changed",
-                     G_CALLBACK(desktop_search_preedit_changed), desktop);
-#else
     g_signal_connect(GTK_ENTRY(desktop->search_entry)->im_context, "preedit-changed",
                      G_CALLBACK(desktop_search_preedit_changed), desktop);
-#endif
     gtk_box_pack_start(GTK_BOX(vbox), desktop->search_entry, TRUE, TRUE, 0);
     gtk_widget_realize(desktop->search_entry);
     gtk_widget_show(desktop->search_entry);
@@ -4285,9 +4095,7 @@ static void on_realize(GtkWidget* w)
     FmDesktop* self = (FmDesktop*)w;
     PangoFontDescription *font_desc;
     PangoContext* pc;
-#if GTK_CHECK_VERSION(3, 0, 0)
     char *css_data;
-#endif
 
     GTK_WIDGET_CLASS(fm_desktop_parent_class)->realize(w);
     gtk_window_set_skip_pager_hint(GTK_WINDOW(w), TRUE);
@@ -4312,16 +4120,14 @@ static void on_realize(GtkWidget* w)
     pc = gtk_widget_get_pango_context(w);
     pango_context_set_font_description(pc, font_desc);
     pango_font_description_free(font_desc);
-#if GTK_CHECK_VERSION(3, 0, 0)
     css_data = g_strdup_printf("FmDesktop {\n"
                                    "background-color: #%02x%02x%02x\n"
                                "}",
-                               self->conf.desktop_bg.red/256,
-                               self->conf.desktop_bg.green/256,
-                               self->conf.desktop_bg.blue/256);
+                               (int)(self->conf.desktop_bg.red   * 255),
+                               (int)(self->conf.desktop_bg.green * 255),
+                               (int)(self->conf.desktop_bg.blue  * 255));
     gtk_css_provider_load_from_data(self->css, css_data, -1, NULL);
     g_free(css_data);
-#endif
     if (self->layout_pending)
         queue_layout_items(self);
 }
@@ -4330,9 +4136,7 @@ static gboolean on_focus_in(GtkWidget* w, GdkEventFocus* evt)
 {
     FmDesktop* self = (FmDesktop*) w;
     GtkTreeIter it;
-#if !GTK_CHECK_VERSION(2, 22, 0)
     GTK_WIDGET_SET_FLAGS(w, GTK_HAS_FOCUS);
-#endif
     if(!self->focus && self->model
        && gtk_tree_model_get_iter_first(GTK_TREE_MODEL(self->model), &it))
     {
@@ -4349,9 +4153,7 @@ static gboolean on_focus_out(GtkWidget* w, GdkEventFocus* evt)
     FmDesktop* self = (FmDesktop*) w;
     if(self->focus)
     {
-#if !GTK_CHECK_VERSION(2, 22, 0)
         GTK_WIDGET_UNSET_FLAGS(w, GTK_HAS_FOCUS);
-#endif
         redraw_item(self, self->focus);
     }
     return FALSE;
@@ -4497,10 +4299,6 @@ static GdkPixbuf *_create_drag_icon(FmDesktop *desktop, gint *x, gint *y)
     GdkPixbuf *icon;
     GtkTreeIter it;
     GdkRectangle area, icon_rect;
-#if !GTK_CHECK_VERSION(3, 0, 0)
-    guchar *dest_data, *src_data;
-    int dest_stride, src_stride, _x, _y;
-#endif
 
     if (!desktop->model)
         return NULL;
@@ -4571,46 +4369,7 @@ static GdkPixbuf *_create_drag_icon(FmDesktop *desktop, gint *x, gint *y)
     while(gtk_tree_model_iter_next(model, &it));
 
     cairo_destroy (cr);
-#if GTK_CHECK_VERSION(3, 0, 0)
     pixbuf = gdk_pixbuf_get_from_surface(s, 0, 0, area.width, area.height);
-#else
-    /* GTK2 has no API gdk_pixbuf_get_from_surface() but we cannot
-       preserve transparency using gdk_pixbuf_get_from_drawable() so
-       therefore have to implement that API behavior here instead */
-    pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB, TRUE, 8, area.width, area.height);
-    cairo_surface_flush(s);
-    dest_data = gdk_pixbuf_get_pixels(pixbuf);
-    dest_stride = gdk_pixbuf_get_rowstride(pixbuf);
-    src_data = cairo_image_surface_get_data(s);
-    src_stride = cairo_image_surface_get_stride(s);
-
-    /* convert alpha from cairo_surface_t into GdkPixbuf format */
-    for (_y = 0; _y < area.height; _y++)
-    {
-        guint32 *src = (guint32 *) src_data;
-
-        for (_x = 0; _x < area.width; _x++)
-        {
-            guint alpha = src[_x] >> 24;
-
-            if (alpha == 0)
-            {
-                dest_data[_x * 4 + 0] = 0;
-                dest_data[_x * 4 + 1] = 0;
-                dest_data[_x * 4 + 2] = 0;
-            }
-            else
-            {
-                dest_data[_x * 4 + 0] = (((src[_x] & 0xff0000) >> 16) * 255 + alpha / 2) / alpha;
-                dest_data[_x * 4 + 1] = (((src[_x] & 0x00ff00) >>  8) * 255 + alpha / 2) / alpha;
-                dest_data[_x * 4 + 2] = (((src[_x] & 0x0000ff) >>  0) * 255 + alpha / 2) / alpha;
-            }
-            dest_data[_x * 4 + 3] = alpha;
-        }
-        src_data += src_stride;
-        dest_data += dest_stride;
-    }
-#endif
     cairo_surface_destroy(s);
     *x = area.x;
     *y = area.y;
@@ -4684,43 +4443,6 @@ static FmJobErrorAction on_folder_error(FmFolder* folder, GError* err, FmJobErro
 }
 
 
-#if !GTK_CHECK_VERSION(3, 0, 0)
-/* ---------------------------------------------------------------------
-   We should not follow background changes on the style so we create
-   a style class for the desktop with dummy set background operator.
-   For GTK+ 3.0 we add a style provider with high priority instead. */
-
-static void _dummy_set_background(GtkStyle *style, GdkWindow *window, GtkStateType state_type)
-{
-}
-
-#define FM_DESKTOP_TYPE_STYLE    (fm_desktop_style_get_type())
-
-typedef struct _FmDesktopStyle FmDesktopStyle;
-struct _FmDesktopStyle
-{
-    GtkStyle parent;
-};
-
-typedef struct _FmDesktopStyleClass FmDesktopStyleClass;
-struct _FmDesktopStyleClass
-{
-    GtkStyleClass parent_class;
-};
-
-G_DEFINE_TYPE(FmDesktopStyle, fm_desktop_style, GTK_TYPE_STYLE)
-
-static void fm_desktop_style_class_init(FmDesktopStyleClass *klass)
-{
-    GtkStyleClass *style_class = GTK_STYLE_CLASS(klass);
-
-    style_class->set_background = _dummy_set_background;
-}
-
-static void fm_desktop_style_init(FmDesktopStyle *self)
-{
-}
-#endif
 
 /* ---------------------------------------------------------------------
     FmDesktop class main handlers */
@@ -4823,11 +4545,7 @@ static void on_show_full_names_changed(FmConfig *cfg, FmDesktop *self)
 }
 #endif
 
-#if GTK_CHECK_VERSION(3, 0, 0)
 static void fm_desktop_destroy(GtkWidget *object)
-#else
-static void fm_desktop_destroy(GtkObject *object)
-#endif
 {
     FmDesktop *self;
     GdkScreen* screen;
@@ -4902,25 +4620,15 @@ static void fm_desktop_destroy(GtkObject *object)
         self->search_window = NULL;
     }
 
-#if GTK_CHECK_VERSION(3, 0, 0)
     GTK_WIDGET_CLASS(fm_desktop_parent_class)->destroy(object);
-#else
-    GTK_OBJECT_CLASS(fm_desktop_parent_class)->destroy(object);
-#endif
 }
 
 static void fm_desktop_init(FmDesktop *self)
 {
-#if GTK_CHECK_VERSION(3, 0, 0)
     self->css = gtk_css_provider_new();
     gtk_style_context_add_provider(gtk_widget_get_style_context((GtkWidget*)self),
                                    GTK_STYLE_PROVIDER(self->css),
                                    GTK_STYLE_PROVIDER_PRIORITY_USER);
-#else
-    GtkStyle *style = g_object_new(FM_DESKTOP_TYPE_STYLE, NULL);
-    gtk_widget_set_style((GtkWidget*)self, style);
-    g_object_unref(style);
-#endif
 }
 
 /* we should have a constructor to handle parameters */
@@ -5045,18 +4753,10 @@ static void fm_desktop_class_init(FmDesktopClass *klass)
     Atom atoms[G_N_ELEMENTS(atom_names)] = {0};
     GObjectClass* object_class = G_OBJECT_CLASS(klass);
 
-#if GTK_CHECK_VERSION(3, 0, 0)
     widget_class->destroy = fm_desktop_destroy;
     widget_class->draw = on_draw;
     widget_class->get_preferred_width = on_get_preferred_width;
     widget_class->get_preferred_height = on_get_preferred_height;
-#else
-    GtkObjectClass *gtk_object_class = GTK_OBJECT_CLASS(klass);
-    gtk_object_class->destroy = fm_desktop_destroy;
-
-    widget_class->expose_event = on_expose;
-    widget_class->size_request = on_size_request;
-#endif
     widget_class->size_allocate = on_size_allocate;
     widget_class->button_press_event = on_button_press;
     widget_class->button_release_event = on_button_release;
@@ -5409,19 +5109,20 @@ static void on_wallpaper_mode_changed2(GtkComboBox *combo, GtkWidget *wallpaper_
 
 static void on_bg_color_set(GtkColorButton *btn, FmDesktop *desktop)
 {
-    GdkColor new_val;
+    GdkRGBA new_val;
 
-    gtk_color_button_get_color(btn, &new_val);
-    if (!gdk_color_equal(&desktop->conf.desktop_bg, &new_val))
+    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(btn), &new_val);
+    new_val.alpha = 1.0;
+    if (!gdk_rgba_equal(&desktop->conf.desktop_bg, &new_val))
     {
-#if GTK_CHECK_VERSION(3, 0, 0)
         char *css_data = g_strdup_printf("FmDesktop {\n"
                                              "background-color: #%02x%02x%02x\n"
-                                         "}", new_val.red/256, new_val.green/256,
-                                         new_val.blue/256);
+                                         "}",
+                                         (int)(new_val.red   * 255),
+                                         (int)(new_val.green * 255),
+                                         (int)(new_val.blue  * 255));
         gtk_css_provider_load_from_data(desktop->css, css_data, -1, NULL);
         g_free(css_data);
-#endif
         desktop->conf.desktop_bg = new_val;
         queue_config_save(desktop);
         update_background(desktop, 0);
@@ -5442,10 +5143,11 @@ static void on_wallpaper_common_toggled(GtkToggleButton* btn, FmDesktop *desktop
 
 static void on_fg_color_set(GtkColorButton *btn, FmDesktop *desktop)
 {
-    GdkColor new_val;
+    GdkRGBA new_val;
 
-    gtk_color_button_get_color(btn, &new_val);
-    if (!gdk_color_equal(&desktop->conf.desktop_fg, &new_val))
+    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(btn), &new_val);
+    new_val.alpha = 1.0;
+    if (!gdk_rgba_equal(&desktop->conf.desktop_fg, &new_val))
     {
         desktop->conf.desktop_fg = new_val;
         queue_config_save(desktop);
@@ -5455,10 +5157,11 @@ static void on_fg_color_set(GtkColorButton *btn, FmDesktop *desktop)
 
 static void on_shadow_color_set(GtkColorButton *btn, FmDesktop *desktop)
 {
-    GdkColor new_val;
+    GdkRGBA new_val;
 
-    gtk_color_button_get_color(btn, &new_val);
-    if (!gdk_color_equal(&desktop->conf.desktop_shadow, &new_val))
+    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(btn), &new_val);
+    new_val.alpha = 1.0;
+    if (!gdk_rgba_equal(&desktop->conf.desktop_shadow, &new_val))
     {
         desktop->conf.desktop_shadow = new_val;
         queue_config_save(desktop);
@@ -5709,16 +5412,16 @@ void fm_desktop_preference(GtkAction *act, FmDesktop *desktop)
                                      desktop->conf.wallpaper_mode != FM_WP_COLOR);
         }
         item = gtk_builder_get_object(builder, "desktop_bg");
-        gtk_color_button_set_color(GTK_COLOR_BUTTON(item), &desktop->conf.desktop_bg);
+        gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(item), &desktop->conf.desktop_bg);
         g_signal_connect(item, "color-set", G_CALLBACK(on_bg_color_set), desktop);
         item = gtk_builder_get_object(builder, "wallpaper_common");
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(item), desktop->conf.wallpaper_common);
         g_signal_connect(item, "toggled", G_CALLBACK(on_wallpaper_common_toggled), desktop);
         item = gtk_builder_get_object(builder, "desktop_fg");
-        gtk_color_button_set_color(GTK_COLOR_BUTTON(item), &desktop->conf.desktop_fg);
+        gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(item), &desktop->conf.desktop_fg);
         g_signal_connect(item, "color-set", G_CALLBACK(on_fg_color_set), desktop);
         item = gtk_builder_get_object(builder, "desktop_shadow");
-        gtk_color_button_set_color(GTK_COLOR_BUTTON(item), &desktop->conf.desktop_shadow);
+        gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(item), &desktop->conf.desktop_shadow);
         g_signal_connect(item, "color-set", G_CALLBACK(on_shadow_color_set), desktop);
         item = gtk_builder_get_object(builder, "show_wm_menu");
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(item), desktop->conf.show_wm_menu);
