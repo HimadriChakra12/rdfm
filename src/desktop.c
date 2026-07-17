@@ -3509,9 +3509,9 @@ static void send_focus_change(GtkWidget *widget, gboolean in)
 
   g_object_ref (widget);
   if (in)
-    GTK_OBJECT_FLAGS (widget) |= GTK_HAS_FOCUS;
+    gtk_widget_set_state_flags (widget, GTK_STATE_FLAG_FOCUSED, FALSE);
   else
-    GTK_OBJECT_FLAGS (widget) &= ~(GTK_HAS_FOCUS);
+    gtk_widget_unset_state_flags (widget, GTK_STATE_FLAG_FOCUSED);
   gtk_widget_event (widget, fevent);
   g_object_notify (G_OBJECT (widget), "has-focus");
   g_object_unref (widget);
@@ -3721,7 +3721,7 @@ static void desktop_search_activate(GtkEntry *entry, FmDesktop *desktop)
     }
 }
 
-static void desktop_search_preedit_changed(GtkIMContext *im_context,
+static void desktop_search_preedit_changed(GtkEntry *entry, const gchar *preedit,
                                            FmDesktop *desktop)
 {
     desktop->search_imcontext_changed = TRUE;
@@ -3832,7 +3832,7 @@ static void desktop_search_ensure_window(FmDesktop *desktop)
     /* allocate the search entry widget */
     desktop->search_entry = gtk_entry_new();
     g_signal_connect(desktop->search_entry, "activate", G_CALLBACK(desktop_search_activate), desktop);
-    g_signal_connect(GTK_ENTRY(desktop->search_entry)->im_context, "preedit-changed",
+    g_signal_connect(desktop->search_entry, "preedit-changed",
                      G_CALLBACK(desktop_search_preedit_changed), desktop);
     gtk_box_pack_start(GTK_BOX(vbox), desktop->search_entry, TRUE, TRUE, 0);
     gtk_widget_realize(desktop->search_entry);
@@ -4136,7 +4136,7 @@ static gboolean on_focus_in(GtkWidget* w, GdkEventFocus* evt)
 {
     FmDesktop* self = (FmDesktop*) w;
     GtkTreeIter it;
-    GTK_WIDGET_SET_FLAGS(w, GTK_HAS_FOCUS);
+    gtk_widget_set_state_flags(w, GTK_STATE_FLAG_FOCUSED, FALSE);
     if(!self->focus && self->model
        && gtk_tree_model_get_iter_first(GTK_TREE_MODEL(self->model), &it))
     {
@@ -4153,7 +4153,7 @@ static gboolean on_focus_out(GtkWidget* w, GdkEventFocus* evt)
     FmDesktop* self = (FmDesktop*) w;
     if(self->focus)
     {
-        GTK_WIDGET_UNSET_FLAGS(w, GTK_HAS_FOCUS);
+        gtk_widget_unset_state_flags(w, GTK_STATE_FLAG_FOCUSED);
         redraw_item(self, self->focus);
     }
     return FALSE;
