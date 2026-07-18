@@ -40,6 +40,7 @@
 #include "connect-server.h"
 
 #include "gseal-gtk-compat.h"
+#include "rdfm-archive.h"
 
 static void fm_main_win_destroy(GtkWidget *object);
 
@@ -72,6 +73,14 @@ static void on_copy_path(GtkAction* act, FmMainWin* win);
 static void on_preference(GtkAction* act, FmMainWin* win);
 
 static void on_add_bookmark(GtkAction* act, FmMainWin* win);
+
+static void on_arc_view(GtkAction* act, FmMainWin* win);
+static void on_arc_extract(GtkAction* act, FmMainWin* win);
+static void on_arc_create(GtkAction* act, FmMainWin* win);
+static void _arc_update_popup(FmFolderView *fv, GtkWindow *win,
+                              GtkUIManager *ui, GtkActionGroup *act_grp,
+                              FmFileInfoList *files);
+static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMainWin* win);
 
 static void on_go(GtkAction* act, FmMainWin* win);
 static void on_go_back(GtkAction* act, FmMainWin* win);
@@ -375,9 +384,57 @@ static void on_folder_view_sel_changed(FmFolderView* fv, gint n_sel, FmMainWin* 
     gtk_action_set_sensitive(act, has_selected);
 }
 
-static gboolean on_view_key_press_event(FmFolderView* fv, GdkEventKey* evt, FmMainWin* win)
+/* Returns the inner GtkTreeView or GtkIconView inside an FmFolderView
+ * (which is a GtkScrolledWindow).  The child may be a GtkViewport wrapping
+ * the real widget, so we walk down one extra level if needed. */
+static GtkWidget *_fv_get_inner_widget(FmFolderView *fv)
 {
-    /* vim-style navigation keys (active when folder view has focus) */
+    GtkWidget *child = gtk_bin_get_child(GTK_BIN(fv));
+    if (!child)
+        return NULL;
+    /* GtkScrolledWindow → GtkViewport → real widget (icon view case) */
+    if (GTK_IS_BIN(child))
+    {
+        GtkWidget *inner = gtk_bin_get_child(GTK_BIN(child));
+        if (inner && (GTK_IS_TREE_VIEW(inner) || GTK_IS_ICON_VIEW(inner)))
+            return inner;
+    }
+    if (GTK_IS_TREE_VIEW(child) || GTK_IS_ICON_VIEW(child))
+        return child;
+    return NULL;
+}
+
+/* Called once on FmFolderView "realize".  Connects vim keybinds to the inner
+ * widget so our handler runs before GTK's default key-press handler (which
+ * triggers typeahead search for printable chars, eating j/k/h/l). */
+static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
+{
+    GtkWidget *inner = _fv_get_inner_widget(fv);
+    if (!inner)
+        return;
+
+    /* Disable GtkTreeView's built-in typeahead search -- it intercepts every
+     * printable keypress and opens a search popup, which is exactly what
+     * swallows our j/k/h/l before on_view_key_press_event can see them. */
+    if (GTK_IS_TREE_VIEW(inner))
+        gtk_tree_view_set_enable_search(GTK_TREE_VIEW(inner), FALSE);
+
+    g_signal_connect(inner, "key-press-event",
+                     G_CALLBACK(on_view_key_press_event), win);
+
+    /* stash for clean disconnect later */
+    g_object_set_data(G_OBJECT(fv), "rdfm-inner-widget", inner);
+
+    /* one-shot: disconnect the realize handler */
+    g_signal_handlers_disconnect_by_func(fv, _fv_connect_vim_keys, win);
+}
+
+static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMainWin* win)
+{
+    /* vim-style navigation keys.
+     * Connected directly on the inner GtkTreeView / GtkIconView so we run
+     * BEFORE GTK's default handler (which triggers typeahead search for
+     * printable chars).  Returning TRUE stops propagation entirely. */
     int modifier = evt->state & gtk_accelerator_get_default_mod_mask();
 
     if(modifier == 0)
@@ -388,35 +445,15 @@ static gboolean on_view_key_press_event(FmFolderView* fv, GdkEventKey* evt, FmMa
             on_go_up(NULL, win);
             return TRUE;
 
-        /* j/k: move selection down/up (synthesise arrow key) */
+        /* j/k → move-cursor Down/Up on the inner widget directly */
         case GDK_KEY_j:
-        {
-            GdkEvent *synth = gdk_event_new(GDK_KEY_PRESS);
-            synth->key.window    = g_object_ref(evt->window);
-            synth->key.send_event= TRUE;
-            synth->key.time      = evt->time;
-            synth->key.state     = 0;
-            synth->key.keyval    = GDK_KEY_Down;
-            synth->key.hardware_keycode = 0;
-            synth->key.group     = 0;
-            gtk_main_do_event(synth);
-            gdk_event_free(synth);
+            g_signal_emit_by_name(inner, "move-cursor",
+                                  GTK_MOVEMENT_DISPLAY_LINES, 1);
             return TRUE;
-        }
         case GDK_KEY_k:
-        {
-            GdkEvent *synth = gdk_event_new(GDK_KEY_PRESS);
-            synth->key.window    = g_object_ref(evt->window);
-            synth->key.send_event= TRUE;
-            synth->key.time      = evt->time;
-            synth->key.state     = 0;
-            synth->key.keyval    = GDK_KEY_Up;
-            synth->key.hardware_keycode = 0;
-            synth->key.group     = 0;
-            gtk_main_do_event(synth);
-            gdk_event_free(synth);
+            g_signal_emit_by_name(inner, "move-cursor",
+                                  GTK_MOVEMENT_DISPLAY_LINES, -1);
             return TRUE;
-        }
 
         /* h/l: history back / forward */
         case GDK_KEY_h:
@@ -1288,6 +1325,92 @@ static void on_launch(GtkAction* act, FmMainWin* win)
 }
 #endif
 
+/* ── archive actions ────────────────────────────────────────────────────── */
+
+static void on_arc_view(GtkAction *act, FmMainWin *win)
+{
+    FmFileInfoList *files = fm_folder_view_dup_selected_files(win->folder_view);
+    if (!files) return;
+    for (GList *l = fm_file_info_list_peek_head_link(files); l; l = l->next) {
+        FmFileInfo *fi = l->data;
+        if (rdfm_is_archive(fm_file_info_get_name(fi)))
+            rdfm_archive_view_file(GTK_WINDOW(win), fi);
+    }
+    fm_file_info_list_unref(files);
+}
+
+static void on_arc_extract(GtkAction *act, FmMainWin *win)
+{
+    FmFileInfoList *files = fm_folder_view_dup_selected_files(win->folder_view);
+    if (!files) return;
+    rdfm_archive_extract_files(GTK_WINDOW(win), files);
+    fm_file_info_list_unref(files);
+}
+
+static void on_arc_create(GtkAction *act, FmMainWin *win)
+{
+    FmPathList *paths = fm_folder_view_dup_selected_file_paths(win->folder_view);
+    char *cwd = fm_path_to_str(fm_tab_page_get_cwd(win->current_page));
+
+    /* if nothing selected, use current directory as sole source */
+    if (!paths || fm_path_list_get_length(paths) == 0) {
+        if (paths) fm_path_list_unref(paths);
+        paths = fm_path_list_new();
+        fm_path_list_push_tail(paths, fm_tab_page_get_cwd(win->current_page));
+    }
+
+    rdfm_archive_create(GTK_WINDOW(win), paths, cwd);
+    fm_path_list_unref(paths);
+    g_free(cwd);
+}
+
+/* ── file item popup update (adds archive items to right-click menu) ─────── */
+
+static const char arc_file_menu_xml[] =
+"<popup>"
+  "<placeholder name='ph2'>"
+    "<separator/>"
+    "<menuitem action='ArcViewCtx'/>"
+    "<menuitem action='ArcExtractCtx'/>"
+    "<menuitem action='ArcCreateCtx'/>"
+  "</placeholder>"
+"</popup>";
+
+static GtkActionEntry arc_file_menu_actions[] = {
+    {"ArcViewCtx",    "package-x-generic", N_("View Archive _Contents…"), NULL,
+     N_("List files inside archive"), G_CALLBACK(on_arc_view)},
+    {"ArcExtractCtx", GTK_STOCK_UNINDENT,  N_("_Extract Archive…"), NULL,
+     N_("Extract archive to a folder"), G_CALLBACK(on_arc_extract)},
+    {"ArcCreateCtx",  GTK_STOCK_INDENT,    N_("Create _Archive…"), NULL,
+     N_("Create archive from selection"), G_CALLBACK(on_arc_create)},
+};
+
+static void _arc_update_popup(FmFolderView *fv, GtkWindow *win,
+                              GtkUIManager *ui, GtkActionGroup *act_grp,
+                              FmFileInfoList *files)
+{
+    gboolean has_archive = FALSE;
+
+    for (GList *l = fm_file_info_list_peek_head_link(files); l; l = l->next) {
+        FmFileInfo *fi = l->data;
+        if (!fm_file_info_is_dir(fi) && rdfm_is_archive(fm_file_info_get_name(fi))) {
+            has_archive = TRUE;
+            break;
+        }
+    }
+
+    gtk_action_group_set_translation_domain(act_grp, NULL);
+    gtk_action_group_add_actions(act_grp, arc_file_menu_actions,
+                                 G_N_ELEMENTS(arc_file_menu_actions), win);
+    gtk_ui_manager_add_ui_from_string(ui, arc_file_menu_xml, -1, NULL);
+
+    /* hide view/extract when no archive is selected */
+    GtkAction *view_act = gtk_action_group_get_action(act_grp, "ArcViewCtx");
+    GtkAction *ext_act  = gtk_action_group_get_action(act_grp, "ArcExtractCtx");
+    gtk_action_set_visible(view_act, has_archive);
+    gtk_action_set_visible(ext_act,  has_archive);
+}
+
 static void on_show_hidden(GtkToggleAction* act, FmMainWin* win)
 {
     FmTabPage* page = win->current_page;
@@ -1708,7 +1831,13 @@ gint fm_main_win_add_tab(FmMainWin* win, FmPath* path)
 
     gtk_paned_set_position(GTK_PANED(page), app_config->splitter_pos);
 
-    g_signal_connect(folder_view, "key-press-event", G_CALLBACK(on_view_key_press_event), win);
+    /* Defer keybind connection to "realize" so the inner GtkTreeView /
+     * GtkIconView child definitely exists.  We connect on the inner widget
+     * directly so our handler fires BEFORE GTK's default key-press handler,
+     * which would otherwise trigger typeahead search for printable chars
+     * (j/k/h/l) and eat them before we see them. */
+    g_signal_connect(folder_view, "realize",
+                     G_CALLBACK(_fv_connect_vim_keys), win);
 
     g_signal_connect_swapped(label->close_btn, "clicked", G_CALLBACK(gtk_widget_destroy), page);
     g_signal_connect(label, "button-press-event", G_CALLBACK(on_tab_label_button_pressed), page);
@@ -2210,7 +2339,7 @@ static void on_tab_page_loaded(FmTabPage *page, FmMainWin *win)
 
     /* update folder popup */
     fm_folder_view_set_active(folder_view, FALSE);
-    fm_folder_view_add_popup(folder_view, GTK_WINDOW(win), NULL);
+    fm_folder_view_add_popup(folder_view, GTK_WINDOW(win), _arc_update_popup);
     fm_folder_view_set_active(folder_view, (page == win->current_page));
 }
 
@@ -2384,8 +2513,9 @@ static void on_notebook_page_added(GtkNotebook* nb, GtkWidget* page, guint num, 
     g_signal_connect(tab_page->side_pane, "chdir",
                      G_CALLBACK(on_side_pane_chdir), win);
 
-    /* create folder popup and apply shortcuts from it */
-    fm_folder_view_add_popup(tab_page->folder_view, GTK_WINDOW(win), NULL);
+    /* create folder popup; _arc_update_popup adds archive items to file context menu */
+    fm_folder_view_add_popup(tab_page->folder_view, GTK_WINDOW(win),
+                             _arc_update_popup);
     /* disable it yet - it will be enabled in on_notebook_switch_page() */
     fm_folder_view_set_active(tab_page->folder_view, FALSE);
 
@@ -2418,8 +2548,17 @@ static void on_notebook_page_removed(GtkNotebook* nb, GtkWidget* page, guint num
                                          on_tab_page_loaded, win);
     if(folder_view)
     {
+        /* vim keybinds are connected on the inner widget, not FmFolderView */
+        GtkWidget *inner = g_object_get_data(G_OBJECT(folder_view), "rdfm-inner-widget");
+        if (inner)
+            g_signal_handlers_disconnect_by_func(inner,
+                                                 on_view_key_press_event, win);
+        else
+            g_signal_handlers_disconnect_by_func(folder_view,
+                                                 on_view_key_press_event, win);
+        /* also clean up the realize hook in case it never fired */
         g_signal_handlers_disconnect_by_func(folder_view,
-                                             on_view_key_press_event, win);
+                                             _fv_connect_vim_keys, win);
         g_signal_handlers_disconnect_by_func(folder_view,
                                              on_folder_view_sort_changed, win);
         g_signal_handlers_disconnect_by_func(folder_view,

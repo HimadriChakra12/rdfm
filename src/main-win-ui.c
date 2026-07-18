@@ -159,6 +159,13 @@ static const char main_menu_xml[] =
 #if FM_CHECK_VERSION(1, 2, 0)
     "<menuitem action='Launch'/>"
 #endif
+    "<separator/>"
+    "<menu action='ArchiveMenu'>"
+      "<menuitem action='ArcView'/>"
+      "<menuitem action='ArcExtract'/>"
+      "<separator/>"
+      "<menuitem action='ArcCreate'/>"
+    "</menu>"
     /* "<menuitem action='AsRoot'/>" */
   "</menu>"
   "<menu action='HelpMenu'>"
@@ -248,6 +255,10 @@ static GtkActionEntry main_win_actions[]=
         {"AddBookmark", GTK_STOCK_ADD, N_("_Add to Bookmarks..."), "<Ctrl>D", N_("Add current folder to bookmarks list"), G_CALLBACK(on_add_bookmark)},
     {"ToolMenu", NULL, N_("Too_ls"), NULL, NULL, NULL},
         {"Term", "utilities-terminal", N_("Open Current Folder in _Terminal"), "F4", NULL, G_CALLBACK(on_open_in_terminal)},
+        {"ArchiveMenu", "package-x-generic", N_("_Archive"), NULL, NULL, NULL},
+            {"ArcView",    "package-x-generic", N_("_View Archive Contents…"), NULL, N_("List files inside selected archive"), G_CALLBACK(on_arc_view)},
+            {"ArcExtract", GTK_STOCK_UNINDENT, N_("_Extract Archive…"),        NULL, N_("Extract selected archive"), G_CALLBACK(on_arc_extract)},
+            {"ArcCreate",  GTK_STOCK_INDENT,   N_("_Create Archive…"),         NULL, N_("Create a new archive from selected files"), G_CALLBACK(on_arc_create)},
 #if FM_CHECK_VERSION(1, 0, 2)
         {"Search", GTK_STOCK_FIND, N_("Fin_d Files..."), "<Ctrl><Shift>F", N_("Open search dialog"), G_CALLBACK(on_search)},
 #endif
@@ -338,4 +349,3 @@ static GtkRadioActionEntry main_win_path_bar_mode_actions[]=
     {"PathEntry", NULL, N_("_Location"), NULL, NULL, 0},
     {"PathBar", NULL, N_("_Buttons"), NULL, NULL, 1}
 };
-
