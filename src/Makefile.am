@@ -18,6 +18,7 @@ rdfm_SOURCES = \
 	pref.c \
 	single-inst.c \
 	connect-server.c \
+	rdfm-archive.c \
 	$(NULL)
 
 EXTRA_DIST= \
@@ -33,6 +34,7 @@ EXTRA_DIST= \
 	single-inst.h \
 	connect-server.h \
 	gseal-gtk-compat.h \
+	rdfm-archive.h \
 	$(NULL)
 
 include_HEADERS = rdfm-modules.h
