@@ -13,8 +13,13 @@ pkg-config
 autoconf
 automake
 ```
+* Optional Deps
+```
+rar/unrar #for rar support
+7zip #for 7z support
+```
 
-### Config-driven color system (`data/pcmanfm.conf`)
+### Config-driven color system (`data/rdfm.conf` + `$HOME/.config/rdfm/rdfm.conf`)
 Colors in `[ui]` accept any CSS color string — no GTK theme dependency:
 ```ini
 [ui]
@@ -38,3 +43,4 @@ gtk_theme=Adwaita         # overrides system GTK theme
 ```
 Applied via `GtkSettings` at startup — works independently of `~/.config/gtk-3.0/settings.ini` or any environment variable. Commented out by default (system defaults used).
 
+### Config-driven keybind system (`data/keybind.conf` + `$HOME/.config/rdfm/keybind.conf`)
