@@ -29,7 +29,6 @@
 #include "app-config.h"
 #include "main-win.h"
 #include "tab-page.h"
-#include "rdfm-archive.h"
 
 #include "gseal-gtk-compat.h"
 
@@ -48,66 +47,9 @@ static const char folder_menu_xml[]=
   "</placeholder>"
 "</popup>";
 
-/* Archive items injected into the file item right-click menu */
-static const char arc_popup_xml[]=
-"<popup>"
-  "<placeholder name='ph1'>"
-    "<separator/>"
-    "<menuitem action='ArcViewSel'/>"
-    "<menuitem action='ArcExtractSel'/>"
-    "<menuitem action='ArcCreateSel'/>"
-  "</placeholder>"
-"</popup>";
-
 static void on_open_in_new_tab(GtkAction* act, FmMainWin* win);
 static void on_open_in_new_win(GtkAction* act, FmMainWin* win);
 static void on_open_folder_in_terminal(GtkAction* act, FmMainWin* win);
-
-/* Archive popup callbacks — win is the FmMainWin* passed as user_data */
-static void on_arc_view_sel(GtkAction* act, FmMainWin* win)
-{
-    (void)act;
-    if (!win || !win->folder_view) return;
-    FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
-    if (!sel) return;
-    for (GList *l = fm_file_info_list_peek_head_link(sel); l; l = l->next) {
-        FmFileInfo *fi = l->data;
-        if (rdfm_is_archive(fm_file_info_get_name(fi)))
-            rdfm_archive_view_file(GTK_WINDOW(win), fi);
-    }
-    fm_file_info_list_unref(sel);
-}
-
-static void on_arc_extract_sel(GtkAction* act, FmMainWin* win)
-{
-    (void)act;
-    if (!win || !win->folder_view) return;
-    FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
-    if (!sel) return;
-    rdfm_archive_extract_files(GTK_WINDOW(win), sel);
-    fm_file_info_list_unref(sel);
-}
-
-static void on_arc_create_sel(GtkAction* act, FmMainWin* win)
-{
-    (void)act;
-    if (!win || !win->folder_view) return;
-    FmPathList *paths = fm_folder_view_dup_selected_file_paths(win->folder_view);
-    char *cwd = fm_path_to_str(fm_tab_page_get_cwd(win->current_page));
-    if (paths && fm_path_list_get_length(paths) > 0)
-        rdfm_archive_create(GTK_WINDOW(win), paths, cwd);
-    if (paths) fm_path_list_unref(paths);
-    g_free(cwd);
-}
-
-static GtkActionEntry arc_popup_actions[] = {
-    {"ArcViewSel",    "package-x-generic", N_("View Archive _Contents…"), NULL,
-     NULL, G_CALLBACK(on_arc_view_sel)},
-    {"ArcExtractSel", GTK_STOCK_UNINDENT,  N_("_Extract Archive…"), NULL,
-     NULL, G_CALLBACK(on_arc_extract_sel)},
-    {"ArcCreateSel",  GTK_STOCK_INDENT,    N_("Create _Archive…"), NULL,
-     NULL, G_CALLBACK(on_arc_create_sel)},
-};
 
 /* Action entries for popup menu entries above */
 static GtkActionEntry folder_menu_actions[]=
@@ -868,44 +810,22 @@ static void update_files_popup(FmFolderView* fv, GtkWindow* win,
                                FmFileInfoList* files)
 {
     GList* l;
-    gboolean all_dirs = TRUE;
     gboolean all_native = TRUE;
-    gboolean has_archive = FALSE;
 
-    for(l = fm_file_info_list_peek_head_link(files); l; l = l->next) {
-        FmFileInfo *fi = l->data;
-        if(!fm_file_info_is_dir(fi)) {
-            all_dirs = FALSE;
-            if(rdfm_is_archive(fm_file_info_get_name(fi)))
-                has_archive = TRUE;
-        } else if (!rdfm_can_open_path_in_terminal(fm_file_info_get_path(fi))) {
+    for(l = fm_file_info_list_peek_head_link(files); l; l = l->next)
+        if(!fm_file_info_is_dir(l->data))
+            return; /* actions are valid only if all selected are directories */
+        else if (!rdfm_can_open_path_in_terminal(fm_file_info_get_path(l->data)))
             all_native = FALSE;
-        }
-    }
-
+    g_object_set_qdata_full(G_OBJECT(act_grp), popup_qdata,
+                            fm_file_info_list_ref(files),
+                            (GDestroyNotify)fm_file_info_list_unref);
     gtk_action_group_set_translation_domain(act_grp, NULL);
-
-    /* Directory-specific items (open in tab/win/terminal) */
-    if(all_dirs) {
-        g_object_set_qdata_full(G_OBJECT(act_grp), popup_qdata,
-                                fm_file_info_list_ref(files),
-                                (GDestroyNotify)fm_file_info_list_unref);
-        gtk_action_group_add_actions(act_grp, folder_menu_actions,
-                                     G_N_ELEMENTS(folder_menu_actions), win);
-        gtk_ui_manager_add_ui_from_string(ui, folder_menu_xml, -1, NULL);
-        if (!all_native)
-            gtk_action_set_visible(gtk_action_group_get_action(act_grp, "Term"), FALSE);
-    }
-
-    /* Archive items: always shown when anything is selected; view/extract
-     * visible only when at least one archive is in the selection */
-    gtk_action_group_add_actions(act_grp, arc_popup_actions,
-                                 G_N_ELEMENTS(arc_popup_actions), win);
-    gtk_ui_manager_add_ui_from_string(ui, arc_popup_xml, -1, NULL);
-    gtk_action_set_visible(
-        gtk_action_group_get_action(act_grp, "ArcViewSel"), has_archive);
-    gtk_action_set_visible(
-        gtk_action_group_get_action(act_grp, "ArcExtractSel"), has_archive);
+    gtk_action_group_add_actions(act_grp, folder_menu_actions,
+                                 G_N_ELEMENTS(folder_menu_actions), win);
+    gtk_ui_manager_add_ui_from_string(ui, folder_menu_xml, -1, NULL);
+    if (!all_native)
+        gtk_action_set_visible(gtk_action_group_get_action(act_grp, "Term"), FALSE);
 }
 
 static gboolean open_folder_func(GAppLaunchContext* ctx, GList* folder_infos, gpointer user_data, GError** err)

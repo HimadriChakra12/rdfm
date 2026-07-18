@@ -159,13 +159,6 @@ static const char main_menu_xml[] =
 #if FM_CHECK_VERSION(1, 2, 0)
     "<menuitem action='Launch'/>"
 #endif
-    "<separator/>"
-    "<menu action='ArchiveMenu'>"
-      "<menuitem action='ArcView'/>"
-      "<menuitem action='ArcExtract'/>"
-      "<separator/>"
-      "<menuitem action='ArcCreate'/>"
-    "</menu>"
     /* "<menuitem action='AsRoot'/>" */
   "</menu>"
   "<menu action='HelpMenu'>"
@@ -195,77 +188,73 @@ static const char main_menu_xml[] =
 static GtkActionEntry main_win_actions[]=
 {
     {"FileMenu", NULL, N_("_File"), NULL, NULL, NULL},
-    {"New", GTK_STOCK_NEW, N_("_New Window"), "<Ctrl>N", N_("Open new file manager window"), G_CALLBACK(on_new_win)},
-    {"NewTab", "tab-new", N_("New T_ab"), "<Ctrl>T", N_("Create new tab for this folder"), G_CALLBACK(on_new_tab)},
-    {"CreateNew", GTK_STOCK_ADD, N_("C_reate New..."), "", NULL, NULL},
-    {"NewFolder", "folder", N_("Folder"), "<Ctrl><Shift>N", NULL, G_CALLBACK(bounce_action)},
-    {"NewBlank", NULL, N_("Empty File"), "<Ctrl><Alt>N", NULL, G_CALLBACK(bounce_action)},
-    {"Prop", GTK_STOCK_PROPERTIES, N_("Folder Propertie_s"), NULL, NULL, G_CALLBACK(bounce_action)},
-    {"CloseTab", GTK_STOCK_CLOSE, N_("_Close Tab"), "<Ctrl>W", NULL, G_CALLBACK(on_close_tab)},
-    {"Close", GTK_STOCK_QUIT, N_("Close _Window"), "<Ctrl>Q", NULL, G_CALLBACK(on_close_win)},
+        {"New", GTK_STOCK_NEW, N_("_New Window"), "<Ctrl>N", N_("Open new file manager window"), G_CALLBACK(on_new_win)},
+        {"NewTab", "tab-new", N_("New T_ab"), "<Ctrl>T", N_("Create new tab for this folder"), G_CALLBACK(on_new_tab)},
+        {"CreateNew", GTK_STOCK_ADD, N_("C_reate New..."), "", NULL, NULL},
+            {"NewFolder", "folder", N_("Folder"), "<Ctrl><Shift>N", NULL, G_CALLBACK(bounce_action)},
+            {"NewBlank", NULL, N_("Empty File"), "<Ctrl><Alt>N", NULL, G_CALLBACK(bounce_action)},
+        {"Prop", GTK_STOCK_PROPERTIES, N_("Folder Propertie_s"), NULL, NULL, G_CALLBACK(bounce_action)},
+        {"CloseTab", GTK_STOCK_CLOSE, N_("_Close Tab"), "<Ctrl>W", NULL, G_CALLBACK(on_close_tab)},
+        {"Close", GTK_STOCK_QUIT, N_("Close _Window"), "<Ctrl>Q", NULL, G_CALLBACK(on_close_win)},
     {"EditMenu", NULL, N_("_Edit"), NULL, NULL, NULL},
-    {"Open", GTK_STOCK_OPEN, NULL, "", NULL, G_CALLBACK(on_open)},
-    {"Cut", GTK_STOCK_CUT, N_("C_ut"), NULL, NULL, G_CALLBACK(bounce_action)},
-    {"Copy", GTK_STOCK_COPY, NULL, NULL, NULL, G_CALLBACK(bounce_action)},
-    {"Paste", GTK_STOCK_PASTE, NULL, NULL, NULL, G_CALLBACK(bounce_action)},
-    {"ToTrash", GTK_STOCK_DELETE, N_("Move to _Trash"), "", NULL, G_CALLBACK(on_trash)},
-    {"Del", GTK_STOCK_REMOVE, NULL, "", NULL, G_CALLBACK(on_del)},
-    {"CopyPath", NULL, N_("Copy Pat_h(s)"), NULL, NULL, G_CALLBACK(on_copy_path)},
-    {"Rename", NULL, N_("R_ename..."), "F2", NULL, G_CALLBACK(on_rename)},
-    {"Duplicate", NULL, N_("D_uplicate..."), "<Ctrl>U", NULL, NULL},
-    {"Link", NULL, N_("Create Lin_k..."), NULL, NULL, G_CALLBACK(on_link)},
-    {"MoveTo", NULL, N_("_Move to..."), NULL, NULL, G_CALLBACK(on_move_to)},
-    {"CopyTo", NULL, N_("Copy to_..."), NULL, NULL, G_CALLBACK(on_copy_to)},
-    {"FileProp", GTK_STOCK_PROPERTIES, N_("Propertie_s"), "<Alt>Return", NULL, G_CALLBACK(bounce_action)},
-    {"SelAll", GTK_STOCK_SELECT_ALL, NULL, "<Ctrl>A", NULL, G_CALLBACK(bounce_action)},
-    {"InvSel", NULL, N_("_Invert Selection"), "<Ctrl>I", NULL, G_CALLBACK(bounce_action)},
-    {"Pref", GTK_STOCK_PREFERENCES, N_("Prefere_nces"), NULL, NULL, G_CALLBACK(on_preference)},
+        {"Open", GTK_STOCK_OPEN, NULL, "", NULL, G_CALLBACK(on_open)},
+        {"Cut", GTK_STOCK_CUT, N_("C_ut"), NULL, NULL, G_CALLBACK(bounce_action)},
+        {"Copy", GTK_STOCK_COPY, NULL, NULL, NULL, G_CALLBACK(bounce_action)},
+        {"Paste", GTK_STOCK_PASTE, NULL, NULL, NULL, G_CALLBACK(bounce_action)},
+        {"ToTrash", GTK_STOCK_DELETE, N_("Move to _Trash"), "", NULL, G_CALLBACK(on_trash)},
+        {"Del", GTK_STOCK_REMOVE, NULL, "", NULL, G_CALLBACK(on_del)},
+        {"CopyPath", NULL, N_("Copy Pat_h(s)"), NULL, NULL, G_CALLBACK(on_copy_path)},
+        {"Rename", NULL, N_("R_ename..."), "F2", NULL, G_CALLBACK(on_rename)},
+        {"Duplicate", NULL, N_("D_uplicate..."), "<Ctrl>U", NULL, NULL},
+        {"Link", NULL, N_("Create Lin_k..."), NULL, NULL, G_CALLBACK(on_link)},
+        {"MoveTo", NULL, N_("_Move to..."), NULL, NULL, G_CALLBACK(on_move_to)},
+        {"CopyTo", NULL, N_("Copy to_..."), NULL, NULL, G_CALLBACK(on_copy_to)},
+        {"FileProp", GTK_STOCK_PROPERTIES, N_("Propertie_s"), "<Alt>Return", NULL, G_CALLBACK(bounce_action)},
+        {"SelAll", GTK_STOCK_SELECT_ALL, NULL, "<Ctrl>A", NULL, G_CALLBACK(bounce_action)},
+        {"InvSel", NULL, N_("_Invert Selection"), "<Ctrl>I", NULL, G_CALLBACK(bounce_action)},
+        {"Pref", GTK_STOCK_PREFERENCES, N_("Prefere_nces"), NULL, NULL, G_CALLBACK(on_preference)},
     {"ViewMenu", NULL, N_("_View"), NULL, NULL, NULL},
-    {"Reload", GTK_STOCK_REFRESH, N_("_Reload Folder"), "F5", N_("Reload current folder"), G_CALLBACK(on_reload)},
-    {"Toolbar", NULL, N_("Tool_bar"), NULL, NULL, NULL},
-    {"PathMode", NULL, N_("Pat_h Bar"), NULL, NULL, NULL},
-    {"SidePane", "view-sidetree", N_("Side _Pane"), NULL, NULL, NULL},
-    /* other see below: 'ShowHidden' 'ShowStatus' 'Fullscreen' 'IconView'... */
-    {"FolderView", "view-choose", N_("Fo_lder View Mode"), NULL, NULL, NULL},
-    {"Sort", NULL, N_("S_ort Files"), NULL, NULL, NULL},
-    {"SizeBigger", GTK_STOCK_ZOOM_IN, N_("Zoom _In"), "<Ctrl>KP_Add", NULL, G_CALLBACK(on_size_increment)},
-    {"SizeSmaller", GTK_STOCK_ZOOM_OUT, N_("Zoom O_ut"), "<Ctrl>KP_Subtract", NULL, G_CALLBACK(on_size_decrement)},
-    {"SizeDefault", GTK_STOCK_ZOOM_100, NULL, "<Ctrl>0", NULL, G_CALLBACK(on_size_default)},
+        {"Reload", GTK_STOCK_REFRESH, N_("_Reload Folder"), "F5", N_("Reload current folder"), G_CALLBACK(on_reload)},
+        {"Toolbar", NULL, N_("Tool_bar"), NULL, NULL, NULL},
+        {"PathMode", NULL, N_("Pat_h Bar"), NULL, NULL, NULL},
+        {"SidePane", "view-sidetree", N_("Side _Pane"), NULL, NULL, NULL},
+        /* other see below: 'ShowHidden' 'ShowStatus' 'Fullscreen' 'IconView'... */
+        {"FolderView", "view-choose", N_("Fo_lder View Mode"), NULL, NULL, NULL},
+        {"Sort", NULL, N_("S_ort Files"), NULL, NULL, NULL},
+        {"SizeBigger", GTK_STOCK_ZOOM_IN, N_("Zoom _In"), "<Ctrl>KP_Add", NULL, G_CALLBACK(on_size_increment)},
+        {"SizeSmaller", GTK_STOCK_ZOOM_OUT, N_("Zoom O_ut"), "<Ctrl>KP_Subtract", NULL, G_CALLBACK(on_size_decrement)},
+        {"SizeDefault", GTK_STOCK_ZOOM_100, NULL, "<Ctrl>0", NULL, G_CALLBACK(on_size_default)},
 #if FM_CHECK_VERSION(1, 0, 2)
-    {"Filter", "view-filter", N_("Fil_ter..."), "<Ctrl>E", NULL, G_CALLBACK(on_filter)},
+        {"Filter", "view-filter", N_("Fil_ter..."), "<Ctrl>E", NULL, G_CALLBACK(on_filter)},
 #endif
     {"HelpMenu", NULL, N_("_Help"), NULL, NULL, NULL},
-    {"About", GTK_STOCK_ABOUT, NULL, NULL, NULL, G_CALLBACK(on_about)},
-    {"KeyNavList", GTK_STOCK_INFO, N_("_Keyboard Navigation"), NULL, NULL, G_CALLBACK(on_key_nav_list)},
+        {"About", GTK_STOCK_ABOUT, NULL, NULL, NULL, G_CALLBACK(on_about)},
+        {"KeyNavList", GTK_STOCK_INFO, N_("_Keyboard Navigation"), NULL, NULL, G_CALLBACK(on_key_nav_list)},
     {"GoMenu", NULL, N_("_Go"), NULL, NULL, NULL},
-    {"Prev", GTK_STOCK_GO_BACK, N_("_Previous Folder"), "<Alt>Left", N_("Return to previous folder in history"), G_CALLBACK(on_go_back)},
-    {"Next", GTK_STOCK_GO_FORWARD, N_("_Next Folder"), "<Alt>Right", N_("Go forward to next folder in history"), G_CALLBACK(on_go_forward)},
-    {"Up", GTK_STOCK_GO_UP, N_("Pa_rent Folder"), "<Alt>Up", N_("Go to parent Folder"), G_CALLBACK(on_go_up)},
-    {"Home", "user-home", N_("H_ome Folder"), "<Alt>Home", N_("Go to home folder"), G_CALLBACK(on_go_home)},
-    {"Desktop", "user-desktop", N_("_Desktop"), NULL, N_("Go to desktop folder"), G_CALLBACK(on_go_desktop)},
-    {"Trash", "user-trash", N_("_Trash Can"), NULL, N_("Open trash can"), G_CALLBACK(on_go_trash)},
-    {"Root", "drive-harddisk", N_("Filesyste_m Root"), NULL, N_("Go fo filesystem root"), NULL},
-    {"Apps", "system-software-install", N_("_Applications"), NULL, N_("Go to root of applications menu folder"), G_CALLBACK(on_go_apps)},
-    {"Computer", "computer", N_("Dev_ices"), NULL, N_("Go to list of devices connected to the computer"), G_CALLBACK(on_go_computer)},
-    {"Network", GTK_STOCK_NETWORK, N_("Net_work"), NULL, N_("Go to list of places on the network"), G_CALLBACK(on_go_network)},
-    {"Location", GTK_STOCK_JUMP_TO, N_("_Go to Location..."), "<Ctrl>L", NULL, G_CALLBACK(on_location)},
-    {"Connect", NULL, N_("_Connect to Server..."), NULL, N_("Open a window to choose remote folder location"), G_CALLBACK(on_go_connect)},
-    {"Go", GTK_STOCK_JUMP_TO, NULL, NULL, N_("Go to the path in the location bar"), G_CALLBACK(on_go)},
+        {"Prev", GTK_STOCK_GO_BACK, N_("_Previous Folder"), "<Alt>Left", N_("Return to previous folder in history"), G_CALLBACK(on_go_back)},
+        {"Next", GTK_STOCK_GO_FORWARD, N_("_Next Folder"), "<Alt>Right", N_("Go forward to next folder in history"), G_CALLBACK(on_go_forward)},
+        {"Up", GTK_STOCK_GO_UP, N_("Pa_rent Folder"), "<Alt>Up", N_("Go to parent Folder"), G_CALLBACK(on_go_up)},
+        {"Home", "user-home", N_("H_ome Folder"), "<Alt>Home", N_("Go to home folder"), G_CALLBACK(on_go_home)},
+        {"Desktop", "user-desktop", N_("_Desktop"), NULL, N_("Go to desktop folder"), G_CALLBACK(on_go_desktop)},
+        {"Trash", "user-trash", N_("_Trash Can"), NULL, N_("Open trash can"), G_CALLBACK(on_go_trash)},
+        {"Root", "drive-harddisk", N_("Filesyste_m Root"), NULL, N_("Go fo filesystem root"), NULL},
+        {"Apps", "system-software-install", N_("_Applications"), NULL, N_("Go to root of applications menu folder"), G_CALLBACK(on_go_apps)},
+        {"Computer", "computer", N_("Dev_ices"), NULL, N_("Go to list of devices connected to the computer"), G_CALLBACK(on_go_computer)},
+        {"Network", GTK_STOCK_NETWORK, N_("Net_work"), NULL, N_("Go to list of places on the network"), G_CALLBACK(on_go_network)},
+        {"Location", GTK_STOCK_JUMP_TO, N_("_Go to Location..."), "<Ctrl>L", NULL, G_CALLBACK(on_location)},
+        {"Connect", NULL, N_("_Connect to Server..."), NULL, N_("Open a window to choose remote folder location"), G_CALLBACK(on_go_connect)},
+        {"Go", GTK_STOCK_JUMP_TO, NULL, NULL, N_("Go to the path in the location bar"), G_CALLBACK(on_go)},
     {"BookmarksMenu", NULL, N_("_Bookmarks"), NULL, NULL, NULL},
-    {"AddBookmark", GTK_STOCK_ADD, N_("_Add to Bookmarks..."), "<Ctrl>D", N_("Add current folder to bookmarks list"), G_CALLBACK(on_add_bookmark)},
+        {"AddBookmark", GTK_STOCK_ADD, N_("_Add to Bookmarks..."), "<Ctrl>D", N_("Add current folder to bookmarks list"), G_CALLBACK(on_add_bookmark)},
     {"ToolMenu", NULL, N_("Too_ls"), NULL, NULL, NULL},
-    {"Term", "utilities-terminal", N_("Open Current Folder in _Terminal"), "F4", NULL, G_CALLBACK(on_open_in_terminal)},
-    {"ArchiveMenu", "package-x-generic", N_("_Archive"), NULL, NULL, NULL},
-    {"ArcView",    "package-x-generic", N_("_View Archive Contents…"), NULL, N_("List files inside elected archive"), G_CALLBACK(on_arc_view)},
-    {"ArcExtract", GTK_STOCK_UNINDENT, N_("_Extract Archive…"),        NULL, N_("Extract selected archive"), G_CALLBACK(on_arc_extract)},
-    {"ArcCreate",  GTK_STOCK_INDENT,   N_("_Create Archive…"),         NULL, N_("Create a new archive from selected files"), G_CALLBACK(on_arc_create)},
+        {"Term", "utilities-terminal", N_("Open Current Folder in _Terminal"), "F4", NULL, G_CALLBACK(on_open_in_terminal)},
 #if FM_CHECK_VERSION(1, 0, 2)
-    {"Search", GTK_STOCK_FIND, N_("Fin_d Files..."), "<Ctrl><Shift>F", N_("Open search dialog"), G_CALLBACK(on_search)},
+        {"Search", GTK_STOCK_FIND, N_("Fin_d Files..."), "<Ctrl><Shift>F", N_("Open search dialog"), G_CALLBACK(on_search)},
 #endif
 #if FM_CHECK_VERSION(1, 2, 0)
-    {"Launch", GTK_STOCK_EXECUTE, N_("_Run a Command in Current Folder..."), NULL, NULL, G_CALLBACK(on_launch)},
+        {"Launch", GTK_STOCK_EXECUTE, N_("_Run a Command in Current Folder..."), NULL, NULL, G_CALLBACK(on_launch)},
 #endif
-    /*{"AsRoot", GTK_STOCK_DIALOG_AUTHENTICATION, N_("Open Current Folder as _Root"), NULL, NULL, G_CALLBACK(on_open_as_root)},*/
+        /*{"AsRoot", GTK_STOCK_DIALOG_AUTHENTICATION, N_("Open Current Folder as _Root"), NULL, NULL, G_CALLBACK(on_open_as_root)},*/
     /* for accelerators */
     {"Location2", NULL, NULL, "<Alt>d", NULL, G_CALLBACK(on_location)},
     {"Prev2", NULL, NULL, "XF86Back", NULL, G_CALLBACK(on_go_back)},
@@ -349,3 +338,4 @@ static GtkRadioActionEntry main_win_path_bar_mode_actions[]=
     {"PathEntry", NULL, N_("_Location"), NULL, NULL, 0},
     {"PathBar", NULL, N_("_Buttons"), NULL, NULL, 1}
 };
+

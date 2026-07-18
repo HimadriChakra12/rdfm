@@ -153,48 +153,6 @@ struct _FmAppConfig
     char *icon_theme;   /* e.g. "Papirus", "hicolor"; NULL = system default */
     char *gtk_theme;    /* e.g. "Adwaita", "Arc"; NULL = system default */
 
-    /* app window (regular file-browser window) chrome colors -- distinct
-     * from desktop_section's desktop_bg/fg/shadow, which only apply to
-     * the X11-only desktop/wallpaper manager. These apply to the actual
-     * FmMainWin windows via a GTK CSS provider and work under Wayland. */
-    gboolean app_bg_set;
-    GdkRGBA app_bg;
-    gboolean app_fg_set;
-    GdkRGBA app_fg;
-    char *app_font;    /* e.g. "JetBrains Mono 11"; NULL = system default */
-
-    /* independently themeable areas -- each falls back to app_bg/app_fg
-     * when not explicitly set. The column header in the file view always
-     * matches view_bg/view_fg (not separately configurable, by design). */
-    gboolean toolbar_bg_set;
-    GdkRGBA toolbar_bg;
-    gboolean toolbar_fg_set;
-    GdkRGBA toolbar_fg;
-
-    gboolean pathbar_bg_set;   /* location bar: breadcrumb bar + text entry mode */
-    GdkRGBA pathbar_bg;
-    gboolean pathbar_fg_set;
-    GdkRGBA pathbar_fg;
-
-    gboolean view_bg_set;      /* file tree/list/icon view + its column header */
-    GdkRGBA view_bg;
-    gboolean view_fg_set;
-    GdkRGBA view_fg;
-
-    /* selected item highlight -- without this, setting view_bg/view_fg to a
-     * dark uniform color makes selection invisible (theme's :selected rules
-     * get overridden by the application-priority .view blanket rule). */
-    gboolean sel_bg_set;
-    GdkRGBA sel_bg;
-    gboolean sel_fg_set;
-    GdkRGBA sel_fg;
-
-    /* side pane (places panel) */
-    gboolean side_pane_bg_set;
-    GdkRGBA side_pane_bg;
-    gboolean side_pane_fg_set;
-    GdkRGBA side_pane_fg;
-
     /*char* su_cmd;*/
 
     /* pre-1.2.0 style config - common settings for all monitors */
@@ -229,28 +187,28 @@ void fm_app_config_save_desktop_config(GString *buf, const char *group, FmDeskto
 
 #if FM_CHECK_VERSION(1, 0, 2)
 gboolean fm_app_config_get_config_for_path(FmPath *path, FmSortMode *mode,
-        FmFolderModelCol *by,
-        FmStandardViewMode *view_mode,
-        gboolean *show_hidden,
-        char ***columns);
+                                           FmFolderModelCol *by,
+                                           FmStandardViewMode *view_mode,
+                                           gboolean *show_hidden,
+                                           char ***columns);
 void fm_app_config_save_config_for_path(FmPath *path, FmSortMode mode,
-        FmFolderModelCol by,
-        FmStandardViewMode view_mode,
-        gboolean show_hidden,
-        char **columns);
+                                        FmFolderModelCol by,
+                                        FmStandardViewMode view_mode,
+                                        gboolean show_hidden,
+                                        char **columns);
 #else
 gboolean fm_app_config_get_config_for_path(FmPath *path, GtkSortType *mode,
-        gint *by, FmStandardViewMode *view_mode,
-        gboolean *show_hidden, char ***columns);
+                                           gint *by, FmStandardViewMode *view_mode,
+                                           gboolean *show_hidden, char ***columns);
 void fm_app_config_save_config_for_path(FmPath *path, GtkSortType mode, gint by,
-        FmStandardViewMode view_mode,
-        gboolean show_hidden, char **columns);
+                                        FmStandardViewMode view_mode,
+                                        gboolean show_hidden, char **columns);
 #endif
 void fm_app_config_clear_config_for_path(FmPath *path);
 
 void fm_app_config_set_autorun_choice(FmAppConfig *cfg,
-        const char *content_type,
-        const char *app, gboolean dont_ask);
+                                      const char *content_type,
+                                      const char *app, gboolean dont_ask);
 
 FmWallpaperMode fm_app_wallpaper_get_mode_by_name(const char *name);
 const char *fm_app_wallpaper_get_mode_name(FmWallpaperMode mode);

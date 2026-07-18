@@ -13,28 +13,6 @@ pkg-config
 autoconf
 automake
 ```
-* Optional Deps
-```
-rar/unrar #for rar support
-7zip #for 7z support
-```
-
-### Config-driven color system (`data/rdfm.conf` + `$HOME/.config/rdfm/rdfm.conf`)
-Colors in `[ui]` accept any CSS color string — no GTK theme dependency:
-```ini
-[ui]
-app_bg=#1a1a2e
-app_fg=#e0e0e0
-toolbar_bg=#16213e
-toolbar_fg=#e0e0e0
-pathbar_bg=#0f3460
-pathbar_fg=#ffffff
-view_bg=#1a1a2e
-view_fg=#e0e0e0
-app_font=JetBrains Mono 11
-```
-Stored and loaded as plain `#rrggbb` hex. `GdkRGBA` used internally (0.0–1.0 range).
- 
 ### Icon and GTK theme override (`[ui]` section)
 ```ini
 [ui]
@@ -42,5 +20,3 @@ icon_theme=Papirus        # overrides system icon theme
 gtk_theme=Adwaita         # overrides system GTK theme
 ```
 Applied via `GtkSettings` at startup — works independently of `~/.config/gtk-3.0/settings.ini` or any environment variable. Commented out by default (system defaults used).
-
-### Config-driven keybind system (`data/keybind.conf` + `$HOME/.config/rdfm/keybind.conf`)
