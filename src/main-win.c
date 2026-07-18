@@ -81,6 +81,7 @@ static void _arc_update_popup(FmFolderView *fv, GtkWindow *win,
                               GtkUIManager *ui, GtkActionGroup *act_grp,
                               FmFileInfoList *files);
 static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMainWin* win);
+static gboolean on_view_button_press_event(GtkWidget* inner, GdkEventButton* evt, FmMainWin* win);
 
 static void on_go(GtkAction* act, FmMainWin* win);
 static void on_go_back(GtkAction* act, FmMainWin* win);
@@ -404,9 +405,8 @@ static GtkWidget *_fv_get_inner_widget(FmFolderView *fv)
     return NULL;
 }
 
-/* Called once on FmFolderView "realize".  Connects vim keybinds to the inner
- * widget so our handler runs before GTK's default key-press handler (which
- * triggers typeahead search for printable chars, eating j/k/h/l). */
+/* Called once on FmFolderView "realize".  Connects vim keybinds and archive
+ * interception to the inner widget so our handlers run before FmStandardView. */
 static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
 {
     GtkWidget *inner = _fv_get_inner_widget(fv);
@@ -422,6 +422,10 @@ static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
     g_signal_connect(inner, "key-press-event",
                      G_CALLBACK(on_view_key_press_event), win);
 
+    /* Double-click interception for archives (button 1, 2 clicks) */
+    g_signal_connect(inner, "button-press-event",
+                     G_CALLBACK(on_view_button_press_event), win);
+
     /* stash for clean disconnect later */
     g_object_set_data(G_OBJECT(fv), "rdfm-inner-widget", inner);
 
@@ -429,18 +433,87 @@ static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
     g_signal_handlers_disconnect_by_func(fv, _fv_connect_vim_keys, win);
 }
 
+/* Intercept double-click on archive files before FmStandardView handles it */
+static gboolean on_view_button_press_event(GtkWidget* inner, GdkEventButton* evt, FmMainWin* win)
+{
+    /* Only care about double-click with primary button */
+    if(evt->button != 1 || evt->type != GDK_2BUTTON_PRESS)
+        return FALSE;
+
+    FmFileInfo *fi = NULL;
+
+    if(GTK_IS_TREE_VIEW(inner))
+    {
+        GtkTreePath *path = NULL;
+        if(gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(inner),
+                                         (int)evt->x, (int)evt->y,
+                                         &path, NULL, NULL, NULL))
+        {
+            GtkTreeModel *model = gtk_tree_view_get_model(GTK_TREE_VIEW(inner));
+            GtkTreeIter iter;
+            if(gtk_tree_model_get_iter(model, &iter, path))
+                gtk_tree_model_get(model, &iter, 0, &fi, -1);
+            gtk_tree_path_free(path);
+        }
+    }
+    else if(GTK_IS_ICON_VIEW(inner))
+    {
+        GtkTreePath *path = gtk_icon_view_get_path_at_pos(
+            GTK_ICON_VIEW(inner), (int)evt->x, (int)evt->y);
+        if(path)
+        {
+            GtkTreeModel *model = gtk_icon_view_get_model(GTK_ICON_VIEW(inner));
+            GtkTreeIter iter;
+            if(gtk_tree_model_get_iter(model, &iter, path))
+                gtk_tree_model_get(model, &iter, 0, &fi, -1);
+            gtk_tree_path_free(path);
+        }
+    }
+
+    if(!fi)
+        return FALSE;
+
+    if(!fm_file_info_is_dir(fi) && rdfm_is_archive(fm_file_info_get_name(fi)))
+    {
+        rdfm_archive_view_file(GTK_WINDOW(win), fi);
+        return TRUE; /* swallow — prevent FmStandardView from opening "open with" */
+    }
+
+    return FALSE;
+}
+
 static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMainWin* win)
 {
-    /* vim-style navigation keys.
-     * Connected directly on the inner GtkTreeView / GtkIconView so we run
-     * BEFORE GTK's default handler (which triggers typeahead search for
-     * printable chars).  Returning TRUE stops propagation entirely. */
+    /* Connected directly on the inner GtkTreeView / GtkIconView so we run
+     * BEFORE FmStandardView's key handler (which emits "clicked"/activated).
+     * Returning TRUE stops propagation entirely. */
     int modifier = evt->state & gtk_accelerator_get_default_mod_mask();
 
     if(modifier == 0)
     {
         switch(evt->keyval)
         {
+        /* Return/Enter: open archive with our viewer if selected file is one;
+         * otherwise fall through to FmStandardView's default handler */
+        case GDK_KEY_Return:
+        case GDK_KEY_KP_Enter:
+        case GDK_KEY_ISO_Enter:
+        {
+            FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
+            if(sel && fm_file_info_list_get_length(sel) == 1)
+            {
+                FmFileInfo *fi = fm_file_info_list_peek_head(sel);
+                if(!fm_file_info_is_dir(fi) && rdfm_is_archive(fm_file_info_get_name(fi)))
+                {
+                    rdfm_archive_view_file(GTK_WINDOW(win), fi);
+                    fm_file_info_list_unref(sel);
+                    return TRUE; /* swallow — don't let FmStandardView open it */
+                }
+            }
+            if(sel) fm_file_info_list_unref(sel);
+            return FALSE; /* let FmStandardView handle dirs / normal files */
+        }
+
         case GDK_KEY_BackSpace:
             on_go_up(NULL, win);
             return TRUE;
@@ -2261,7 +2334,7 @@ static void on_folder_view_clicked(FmFolderView* fv, FmFolderViewClickType type,
     switch(type)
     {
     case FM_FV_ACTIVATED: /* file activated */
-        break; /* handled by FmFolderView */
+        break; /* archives handled upstream in on_view_key/button_press_event */
     case FM_FV_CONTEXT_MENU:
         break; /* handled by FmFolderView */
     case FM_FV_MIDDLE_CLICK:
@@ -2550,10 +2623,12 @@ static void on_notebook_page_removed(GtkNotebook* nb, GtkWidget* page, guint num
     {
         /* vim keybinds are connected on the inner widget, not FmFolderView */
         GtkWidget *inner = g_object_get_data(G_OBJECT(folder_view), "rdfm-inner-widget");
-        if (inner)
+        if (inner) {
             g_signal_handlers_disconnect_by_func(inner,
                                                  on_view_key_press_event, win);
-        else
+            g_signal_handlers_disconnect_by_func(inner,
+                                                 on_view_button_press_event, win);
+        } else
             g_signal_handlers_disconnect_by_func(folder_view,
                                                  on_view_key_press_event, win);
         /* also clean up the realize hook in case it never fired */
