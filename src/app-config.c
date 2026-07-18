@@ -552,6 +552,8 @@ static void fm_app_config_init(FmAppConfig *cfg)
     cfg->view_fg_set = FALSE;
     cfg->sel_bg_set  = FALSE;
     cfg->sel_fg_set  = FALSE;
+    cfg->side_pane_bg_set = FALSE;
+    cfg->side_pane_fg_set = FALSE;
     cfg->win_width = 640;
     cfg->win_height = 480;
     cfg->splitter_pos = 150;
@@ -905,6 +907,8 @@ void fm_app_config_load_from_key_file(FmAppConfig* cfg, GKeyFile* kf)
     cfg->view_fg_set = fm_key_file_get_rgba_stripped(kf, "ui", "view_fg", &cfg->view_fg);
     cfg->sel_bg_set  = fm_key_file_get_rgba_stripped(kf, "ui", "sel_bg",  &cfg->sel_bg);
     cfg->sel_fg_set  = fm_key_file_get_rgba_stripped(kf, "ui", "sel_fg",  &cfg->sel_fg);
+    cfg->side_pane_bg_set = fm_key_file_get_rgba_stripped(kf, "ui", "side_pane_bg", &cfg->side_pane_bg);
+    cfg->side_pane_fg_set = fm_key_file_get_rgba_stripped(kf, "ui", "side_pane_fg", &cfg->side_pane_fg);
 
     g_free(cfg->app_font);
     tmp = g_key_file_get_string(kf, "ui", "app_font", NULL);

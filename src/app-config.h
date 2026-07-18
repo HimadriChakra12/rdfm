@@ -189,6 +189,12 @@ struct _FmAppConfig
     gboolean sel_fg_set;
     GdkRGBA sel_fg;
 
+    /* side pane (places panel) */
+    gboolean side_pane_bg_set;
+    GdkRGBA side_pane_bg;
+    gboolean side_pane_fg_set;
+    GdkRGBA side_pane_fg;
+
     /*char* su_cmd;*/
 
     /* pre-1.2.0 style config - common settings for all monitors */

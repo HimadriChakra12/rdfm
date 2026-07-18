@@ -385,52 +385,52 @@ static void on_folder_view_sel_changed(FmFolderView* fv, gint n_sel, FmMainWin* 
     gtk_action_set_sensitive(act, has_selected);
 }
 
-/* Returns the inner GtkTreeView or GtkIconView inside an FmFolderView
- * (which is a GtkScrolledWindow).  The child may be a GtkViewport wrapping
- * the real widget, so we walk down one extra level if needed. */
-static GtkWidget *_fv_get_inner_widget(FmFolderView *fv)
+/* Walk widget tree recursively to find GtkTreeView or GtkIconView */
+static GtkWidget *_fv_find_inner(GtkWidget *w)
 {
-    GtkWidget *child = gtk_bin_get_child(GTK_BIN(fv));
-    if (!child)
-        return NULL;
-    /* GtkScrolledWindow → GtkViewport → real widget (icon view case) */
-    if (GTK_IS_BIN(child))
-    {
-        GtkWidget *inner = gtk_bin_get_child(GTK_BIN(child));
-        if (inner && (GTK_IS_TREE_VIEW(inner) || GTK_IS_ICON_VIEW(inner)))
-            return inner;
+    if (GTK_IS_TREE_VIEW(w) || GTK_IS_ICON_VIEW(w))
+        return w;
+    if (GTK_IS_CONTAINER(w)) {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(w));
+        for (GList *l = children; l; l = l->next) {
+            GtkWidget *found = _fv_find_inner(GTK_WIDGET(l->data));
+            if (found) { g_list_free(children); return found; }
+        }
+        g_list_free(children);
     }
-    if (GTK_IS_TREE_VIEW(child) || GTK_IS_ICON_VIEW(child))
-        return child;
     return NULL;
 }
 
-/* Called once on FmFolderView "realize".  Connects vim keybinds and archive
- * interception to the inner widget so our handlers run before FmStandardView. */
+static GtkWidget *_fv_get_inner_widget(FmFolderView *fv)
+{
+    return _fv_find_inner(GTK_WIDGET(fv));
+}
+
+/* Called on FmFolderView "map" — fires every time the view is shown with
+ * content, so the inner GtkTreeView/GtkIconView is guaranteed to exist.
+ * We only do the setup once (guard via object data). */
 static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
 {
+    /* already set up for this fv */
+    if (g_object_get_data(G_OBJECT(fv), "rdfm-inner-widget"))
+        return;
+
     GtkWidget *inner = _fv_get_inner_widget(fv);
     if (!inner)
         return;
 
     /* Disable GtkTreeView's built-in typeahead search -- it intercepts every
-     * printable keypress and opens a search popup, which is exactly what
-     * swallows our j/k/h/l before on_view_key_press_event can see them. */
+     * printable keypress and opens a search popup, eating j/k/h/l. */
     if (GTK_IS_TREE_VIEW(inner))
         gtk_tree_view_set_enable_search(GTK_TREE_VIEW(inner), FALSE);
 
     g_signal_connect(inner, "key-press-event",
                      G_CALLBACK(on_view_key_press_event), win);
-
-    /* Double-click interception for archives (button 1, 2 clicks) */
     g_signal_connect(inner, "button-press-event",
                      G_CALLBACK(on_view_button_press_event), win);
 
-    /* stash for clean disconnect later */
+    /* stash inner widget pointer for disconnect on tab close */
     g_object_set_data(G_OBJECT(fv), "rdfm-inner-widget", inner);
-
-    /* one-shot: disconnect the realize handler */
-    g_signal_handlers_disconnect_by_func(fv, _fv_connect_vim_keys, win);
 }
 
 /* Intercept double-click on archive files before FmStandardView handles it */
@@ -1525,6 +1525,9 @@ static void on_change_mode(GtkRadioAction* act, GtkRadioAction *cur, FmMainWin* 
     int mode = gtk_radio_action_get_current_value(cur);
     if (win->in_update)
         return;
+    /* FmStandardView replaces its inner widget when mode changes.
+     * Reset the sentinel so _fv_connect_vim_keys reconnects on next map. */
+    g_object_set_data(G_OBJECT(win->folder_view), "rdfm-inner-widget", NULL);
     fm_standard_view_set_mode(FM_STANDARD_VIEW(win->folder_view), mode);
     if (win->current_page->own_config)
         fm_app_config_save_config_for_path(fm_folder_view_get_cwd(win->folder_view),
@@ -1904,12 +1907,12 @@ gint fm_main_win_add_tab(FmMainWin* win, FmPath* path)
 
     gtk_paned_set_position(GTK_PANED(page), app_config->splitter_pos);
 
-    /* Defer keybind connection to "realize" so the inner GtkTreeView /
-     * GtkIconView child definitely exists.  We connect on the inner widget
-     * directly so our handler fires BEFORE GTK's default key-press handler,
-     * which would otherwise trigger typeahead search for printable chars
-     * (j/k/h/l) and eat them before we see them. */
-    g_signal_connect(folder_view, "realize",
+    /* Connect vim keybinds on "map" (not "realize") — inner GtkTreeView/
+     * GtkIconView is created by FmStandardView only when the folder loads,
+     * which happens after realize.  "map" fires every time the view becomes
+     * visible with its content present; the callback guards against repeat
+     * setup with a g_object_set_data sentinel. */
+    g_signal_connect(folder_view, "map",
                      G_CALLBACK(_fv_connect_vim_keys), win);
 
     g_signal_connect_swapped(label->close_btn, "clicked", G_CALLBACK(gtk_widget_destroy), page);
@@ -2538,6 +2541,9 @@ static void on_notebook_switch_page(GtkNotebook* nb, gpointer* new_page, guint n
     {
         fm_side_pane_set_mode(win->side_pane,
                               (app_config->side_pane_mode & FM_SP_MODE_MASK));
+        gtk_style_context_add_class(
+            gtk_widget_get_style_context(GTK_WIDGET(win->side_pane)),
+            "rdfm-side-pane");
         gtk_widget_show_all(GTK_WIDGET(win->side_pane));
     }
 
@@ -2628,10 +2634,8 @@ static void on_notebook_page_removed(GtkNotebook* nb, GtkWidget* page, guint num
                                                  on_view_key_press_event, win);
             g_signal_handlers_disconnect_by_func(inner,
                                                  on_view_button_press_event, win);
-        } else
-            g_signal_handlers_disconnect_by_func(folder_view,
-                                                 on_view_key_press_event, win);
-        /* also clean up the realize hook in case it never fired */
+        }
+        /* disconnect the map handler (may not have fired yet if tab closed early) */
         g_signal_handlers_disconnect_by_func(folder_view,
                                              _fv_connect_vim_keys, win);
         g_signal_handlers_disconnect_by_func(folder_view,
