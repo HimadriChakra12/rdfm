@@ -96,6 +96,25 @@ PKG_CHECK_MODULES(FM, [$fm_modules])
 AC_SUBST(FM_CFLAGS)
 AC_SUBST(FM_LIBS)
 
+# ── Lua 5.4 (optional, enables rdfm.lua config + keybinds) ─────────────────
+AC_ARG_WITH([lua],
+    AS_HELP_STRING([--without-lua],
+        [disable Lua 5.4 config engine (fall back to rdfm.conf)]),
+    [with_lua=$withval], [with_lua=auto])
+
+if test "x$with_lua" != "xno"; then
+    PKG_CHECK_MODULES(LUA, [lua5.4],
+        [AC_DEFINE(HAVE_LUA, 1, [Lua 5.4 is available])
+         have_lua=yes],
+        [if test "x$with_lua" = "xyes"; then
+             AC_MSG_ERROR([--with-lua was given but lua5.4 was not found])
+         fi
+         have_lua=no])
+fi
+AM_CONDITIONAL([HAVE_LUA], [test "x$have_lua" = "xyes"])
+AC_SUBST(LUA_CFLAGS)
+AC_SUBST(LUA_LIBS)
+
 GETTEXT_PACKAGE=rdfm
 AC_SUBST(GETTEXT_PACKAGE)
 

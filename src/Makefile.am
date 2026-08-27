@@ -19,6 +19,7 @@ rdfm_SOURCES = \
 	single-inst.c \
 	connect-server.c \
 	rdfm-archive.c \
+	rdfm-lua.c \
 	$(NULL)
 
 EXTRA_DIST= \
@@ -35,6 +36,7 @@ EXTRA_DIST= \
 	connect-server.h \
 	gseal-gtk-compat.h \
 	rdfm-archive.h \
+	rdfm-lua.h \
 	$(NULL)
 
 include_HEADERS = rdfm-modules.h
@@ -51,6 +53,12 @@ rdfm_LDADD = \
 	$(XLIB_LIBS) \
 	$(FM_LIBS) \
 	$(NULL)
+
+if HAVE_LUA
+rdfm_CFLAGS  += $(LUA_CFLAGS)
+rdfm_LDADD   += $(LUA_LIBS)
+AM_CPPFLAGS  += -DHAVE_LUA=1
+endif
 
 # prepare modules directory
 install-exec-local:

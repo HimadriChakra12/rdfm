@@ -45,6 +45,7 @@
 #include "pref.h"
 #include "rdfm.h"
 #include "single-inst.h"
+#include "rdfm-lua.h"
 
 /* ── keybinds.conf loader ────────────────────────────────────────────────── *
  *
@@ -636,6 +637,7 @@ int main(int argc, char** argv)
     single_inst_finalize(&inst);
     fm_gtk_finalize();
 
+    rdfm_lua_close();   /* tear down Lua VM — frees all strings/tables */
     g_object_unref(config);
     return 0;
 }

@@ -33,6 +33,7 @@
 #include <sys/stat.h>
 
 #include "tab-page.h"
+#include "rdfm-lua.h"
 
 /* Track the on-disk profile config file we last loaded from, and its
  * mtime at load time. This lets save_profile() detect "the file was
@@ -922,6 +923,182 @@ void fm_app_config_load_from_key_file(FmAppConfig* cfg, GKeyFile* kf)
     cfg->app_font = (tmp && tmp[0]) ? tmp : (g_free(tmp), NULL);
 }
 
+/* ── Lua config bridge ───────────────────────────────────────────────────────
+ *
+ * fm_app_config_load_from_lua() reads every rdfm.config.* key that has an
+ * equivalent field in FmAppConfig.  It mirrors fm_app_config_load_from_key_file()
+ * but sources values from the Lua state instead of a GKeyFile.
+ *
+ * Returns TRUE when at least one key was successfully read from Lua.
+ * Returns FALSE (no-op) when Lua is not loaded, so callers can fall through
+ * to the .conf reader.
+ */
+static gboolean fm_app_config_load_from_lua(FmAppConfig *cfg)
+{
+    if (!rdfm_lua_loaded())
+        return FALSE;
+
+    const char *tmp;
+    int         tmp_int;
+
+    /* ── [config] ── */
+    tmp_int = rdfm_lua_config_int("bm_open_method", -1);
+    if (tmp_int >= 0) cfg->bm_open_method = tmp_int;
+
+#if FM_CHECK_VERSION(1, 2, 0)
+    tmp = rdfm_lua_config_str("home_path", NULL);
+    if (tmp && tmp[0]) {
+        g_free(cfg->home_path);
+        cfg->home_path = g_strdup(tmp);
+    }
+#endif
+
+    /* ── [volume] ── */
+    if (rdfm_lua_config_bool("mount_on_startup", cfg->mount_on_startup) != cfg->mount_on_startup)
+        cfg->mount_on_startup = rdfm_lua_config_bool("mount_on_startup", cfg->mount_on_startup);
+    /* Simpler pattern: always read, the default is what cfg already holds */
+    cfg->mount_on_startup = rdfm_lua_config_bool("mount_on_startup", cfg->mount_on_startup);
+    cfg->mount_removable  = rdfm_lua_config_bool("mount_removable",  cfg->mount_removable);
+    cfg->autorun          = rdfm_lua_config_bool("autorun",          cfg->autorun);
+
+    /* ── [desktop] ── */
+    cfg->desktop_section.show_wm_menu =
+        rdfm_lua_config_bool("show_wm_menu", cfg->desktop_section.show_wm_menu);
+
+    /* ── [ui] ── */
+    cfg->always_show_tabs = rdfm_lua_config_bool("always_show_tabs", cfg->always_show_tabs);
+    cfg->hide_close_btn   = rdfm_lua_config_bool("hide_close_btn",   cfg->hide_close_btn);
+    cfg->max_tab_chars    = rdfm_lua_config_int ("max_tab_chars",    cfg->max_tab_chars);
+
+    tmp_int = rdfm_lua_config_int("win_width", -1);
+    if (tmp_int > 0) cfg->win_width = tmp_int;
+    tmp_int = rdfm_lua_config_int("win_height", -1);
+    if (tmp_int > 0) cfg->win_height = tmp_int;
+
+    cfg->maximized          = rdfm_lua_config_bool("maximized",           cfg->maximized);
+    cfg->splitter_pos       = rdfm_lua_config_int ("splitter_pos",        cfg->splitter_pos);
+    cfg->media_in_new_tab   = rdfm_lua_config_bool("media_in_new_tab",    cfg->media_in_new_tab);
+    cfg->desktop_folder_new_win = rdfm_lua_config_bool("desktop_folder_new_win", cfg->desktop_folder_new_win);
+    cfg->change_tab_on_drop = rdfm_lua_config_bool("change_tab_on_drop",  cfg->change_tab_on_drop);
+    cfg->close_on_unmount   = rdfm_lua_config_bool("close_on_unmount",    cfg->close_on_unmount);
+    cfg->show_statusbar     = rdfm_lua_config_bool("show_statusbar",      cfg->show_statusbar);
+    cfg->pathbar_mode_buttons = rdfm_lua_config_bool("pathbar_mode_buttons", cfg->pathbar_mode_buttons);
+    cfg->show_hidden        = rdfm_lua_config_bool("show_hidden",          cfg->show_hidden);
+
+#if FM_CHECK_VERSION(1, 2, 0)
+    cfg->focus_previous = rdfm_lua_config_bool("focus_previous", cfg->focus_previous);
+#endif
+
+    /* side_pane_mode: stored as a string ("places", "dirtree", …) */
+    tmp = rdfm_lua_config_str("side_pane_mode", NULL);
+    if (tmp && tmp[0]) {
+#if FM_CHECK_VERSION(1, 2, 0)
+        int mode = FM_SP_NONE;
+        /* Support comma-separated list: "places,hidden" */
+        char **parts = g_strsplit(tmp, ",", -1);
+        for (int i = 0; parts[i]; i++) {
+            char *p = g_strstrip(parts[i]);
+            if (strcmp(p, "hidden") == 0)
+                mode |= FM_SP_HIDE;
+            else {
+                mode &= ~FM_SP_MODE_MASK;
+                if (p[0] >= '0' && p[0] <= '9')
+                    mode |= atoi(p);
+                else
+                    mode |= fm_side_pane_get_mode_by_name(p);
+            }
+        }
+        g_strfreev(parts);
+        if ((mode & FM_SP_MODE_MASK) != FM_SP_NONE)
+            cfg->side_pane_mode = (FmSidePaneMode)mode;
+#else
+        if (tmp[0] >= '0' && tmp[0] <= '9')
+            cfg->side_pane_mode = (FmSidePaneMode)atoi(tmp);
+#endif
+    }
+
+    /* view_mode: "icon", "list", "compact", "thumbnail" */
+    tmp = rdfm_lua_config_str("view_mode", NULL);
+    if (tmp && tmp[0]) {
+#if FM_CHECK_VERSION(1, 0, 2)
+        int vm = (tmp[0] >= '0' && tmp[0] <= '9')
+                 ? atoi(tmp)
+                 : fm_standard_view_mode_from_str(tmp);
+        if (FM_STANDARD_VIEW_MODE_IS_VALID(vm))
+            cfg->view_mode = vm;
+#else
+        if (tmp[0] >= '0' && tmp[0] <= '9') {
+            int vm = atoi(tmp);
+            if (FM_STANDARD_VIEW_MODE_IS_VALID(vm))
+                cfg->view_mode = vm;
+        }
+#endif
+    }
+
+    /* toolbar items: comma-separated string "visible,newwin,newtab,navigation,home" */
+    tmp = rdfm_lua_config_str("toolbar", NULL);
+    if (tmp && tmp[0]) {
+        cfg->tb.visible = FALSE;
+        cfg->tb.new_win = cfg->tb.new_tab = cfg->tb.nav = cfg->tb.home = FALSE;
+        char **parts = g_strsplit(tmp, ",", -1);
+        for (int i = 0; parts[i]; i++) {
+            char *p = g_strstrip(parts[i]);
+            if      (strcmp(p, "visible")    == 0) cfg->tb.visible  = TRUE;
+            else if (strcmp(p, "newwin")     == 0) cfg->tb.new_win  = TRUE;
+            else if (strcmp(p, "newtab")     == 0) cfg->tb.new_tab  = TRUE;
+            else if (strcmp(p, "navigation") == 0) cfg->tb.nav      = TRUE;
+            else if (strcmp(p, "home")       == 0) cfg->tb.home     = TRUE;
+        }
+        g_strfreev(parts);
+    }
+
+    /* sort: "name;ascending;" or "name;descending;" */
+    tmp = rdfm_lua_config_str("sort", NULL);
+    if (tmp && tmp[0]) {
+        /* Re-use the existing key-file sort parser by stuffing the value into
+         * a temporary GKeyFile — avoids duplicating the sort-parse logic. */
+        GKeyFile *kf_tmp = g_key_file_new();
+        g_key_file_set_string(kf_tmp, "ui", "sort", tmp);
+        _parse_sort(kf_tmp, "ui", &cfg->sort_type, &cfg->sort_by);
+        g_key_file_free(kf_tmp);
+    }
+
+    /* theme overrides */
+    tmp = rdfm_lua_config_str("icon_theme", NULL);
+    if (tmp && tmp[0]) {
+        g_free(cfg->icon_theme);
+        cfg->icon_theme = g_strdup(tmp);
+    }
+    tmp = rdfm_lua_config_str("gtk_theme", NULL);
+    if (tmp && tmp[0]) {
+        g_free(cfg->gtk_theme);
+        cfg->gtk_theme = g_strdup(tmp);
+    }
+
+    /* font */
+    tmp = rdfm_lua_config_str("app_font", NULL);
+    if (tmp && tmp[0]) {
+        g_free(cfg->app_font);
+        cfg->app_font = g_strdup(tmp);
+    }
+
+    /* colors */
+    cfg->app_bg_set      = rdfm_lua_config_color("app_bg",      &cfg->app_bg);
+    cfg->app_fg_set      = rdfm_lua_config_color("app_fg",      &cfg->app_fg);
+    cfg->toolbar_bg_set  = rdfm_lua_config_color("toolbar_bg",  &cfg->toolbar_bg);
+    cfg->toolbar_fg_set  = rdfm_lua_config_color("toolbar_fg",  &cfg->toolbar_fg);
+    cfg->pathbar_bg_set  = rdfm_lua_config_color("pathbar_bg",  &cfg->pathbar_bg);
+    cfg->pathbar_fg_set  = rdfm_lua_config_color("pathbar_fg",  &cfg->pathbar_fg);
+    cfg->view_bg_set     = rdfm_lua_config_color("view_bg",     &cfg->view_bg);
+    cfg->view_fg_set     = rdfm_lua_config_color("view_fg",     &cfg->view_fg);
+    cfg->sel_bg_set      = rdfm_lua_config_color("sel_bg",      &cfg->sel_bg);
+    cfg->sel_fg_set      = rdfm_lua_config_color("sel_fg",      &cfg->sel_fg);
+    cfg->side_pane_bg_set = rdfm_lua_config_color("side_pane_bg", &cfg->side_pane_bg);
+    cfg->side_pane_fg_set = rdfm_lua_config_color("side_pane_fg", &cfg->side_pane_fg);
+
+    return TRUE;
+}
+
 void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
 {
     const gchar * const *dirs, * const *dir;
@@ -929,8 +1106,29 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
     GKeyFile* kf = g_key_file_new();
 
     /* profile name is intentionally ignored: config lives at a flat
-     * rdfm/rdfm.conf with no per-profile subdirectory. */
+     * rdfm/rdfm.conf (or rdfm.lua) with no per-profile subdirectory. */
     (void)name;
+
+    /* ── Step 1: try rdfm.lua ── */
+    if (rdfm_lua_load())
+    {
+        /* Lua loaded and executed successfully — read all settings from it.
+         * We do NOT also read rdfm.conf; rdfm.lua is the authoritative source.
+         * Individual fields that are absent from the Lua file keep the
+         * defaults that were set in fm_app_config_new(). */
+        fm_app_config_load_from_lua(cfg);
+        /* path tracking: point to the Lua file for mtime checks */
+        g_free(loaded_profile_path);
+        path = g_build_filename(g_get_user_config_dir(), "rdfm", "rdfm.lua", NULL);
+        loaded_profile_path = g_strdup(path);
+        loaded_profile_mtime = fm_app_config_stat_mtime(path);
+        g_free(path);
+        path = NULL;  /* prevent double-free below */
+        goto profile_load_done;
+    }
+
+    /* ── Step 2: fall back to rdfm.conf ── */
+    g_message("rdfm: rdfm.lua not found or failed to load; using rdfm.conf");
 
     /* load system-wide settings from /etc/xdg/rdfm/rdfm.conf (etc.) */
     dirs = g_get_system_config_dirs();
@@ -952,6 +1150,8 @@ void fm_app_config_load_from_profile(FmAppConfig* cfg, const char* name)
     loaded_profile_mtime = fm_app_config_stat_mtime(path);
 
     g_free(path);
+
+profile_load_done:
     g_key_file_free(kf);
 
 #if !FM_CHECK_VERSION(1, 2, 0)
