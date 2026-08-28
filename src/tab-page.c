@@ -84,7 +84,9 @@ static void on_arc_extract_sel(GtkAction* act, FmMainWin* win)
     if (!win || !win->folder_view) return;
     FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
     if (!sel) return;
-    rdfm_archive_extract_files(GTK_WINDOW(win), sel);
+    char *cwd = fm_path_to_str(fm_tab_page_get_cwd(win->current_page));
+    rdfm_archive_extract_files(GTK_WINDOW(win), sel, cwd);
+    g_free(cwd);
     fm_file_info_list_unref(sel);
 }
 

@@ -483,40 +483,55 @@ static gboolean on_view_button_press_event(GtkWidget* inner, GdkEventButton* evt
     return FALSE;
 }
 
-/* ── Lua-aware key-press handler ────────────────────────────────────────────
+/*
+ * _key_matches(section, action, default_keyval, default_mod, keyval, mod)
  *
- * For every action we check the Lua keybind table first.  If a matching
- * entry is found there it is used; otherwise we fall through to the
- * compiled-in default (same keys as before).  This means:
+ * Returns TRUE when the live keyval+mod matches either:
+ *   a) the accelerator stored in rdfm.keybinds.<section>.<action>  (Lua path)
+ *   b) the compiled-in default_keyval/default_mod                   (fallback)
  *
- *   • rdfm works identically when no rdfm.lua exists (zero regression)
- *   • any key can be remapped in rdfm.lua without recompiling
- *
- * Helper macro: MATCHES_LUA(section, action, default_keyval, default_mod)
- *   Checks the Lua table AND the hard-coded fallback in one expression.
+ * The fallback fires whenever the Lua entry is absent OR Lua is not loaded —
+ * fixing the previous MATCHES_LUA macro which only used the fallback when Lua
+ * was completely absent (rdfm_lua_loaded() == FALSE), breaking all bindings
+ * when an rdfm.lua was loaded but did not contain a given key.
  */
-#define MATCHES_LUA(sec, act, dkv, dmod) \
-    ( rdfm_lua_keybind_matches((sec), (act), evt->keyval, modifier) || \
-      (!rdfm_lua_loaded() && (evt->keyval == (dkv)) && (modifier == (dmod))) )
+static inline gboolean _key_matches(const char *section, const char *action,
+                                    guint def_kv, guint def_mod,
+                                    guint keyval, int modifier)
+{
+    /* Try Lua first */
+    const char *accel = rdfm_lua_keybind_for(section, action);
+    if (accel && *accel) {
+        guint lua_kv = 0;
+        GdkModifierType lua_mod = 0;
+        gtk_accelerator_parse(accel, &lua_kv, &lua_mod);
+        if (lua_kv == 0)
+            lua_kv = gdk_keyval_from_name(accel);   /* bare name: "j", "BackSpace" */
+        if (lua_kv != 0 && lua_kv != GDK_KEY_VoidSymbol)
+            return (keyval == lua_kv) && ((guint)modifier == (guint)lua_mod);
+        /* accel string unparseable — fall through to default */
+    }
+    /* Compiled-in default */
+    return (keyval == def_kv) && ((guint)modifier == def_mod);
+}
 
 static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMainWin* win)
 {
-    /* Connected directly on the inner GtkTreeView / GtkIconView so we run
-     * BEFORE FmStandardView's key handler (which emits "clicked"/activated).
-     * Returning TRUE stops propagation entirely. */
-    int modifier = evt->state & gtk_accelerator_get_default_mod_mask();
+    guint keyval   = evt->keyval;
+    int  modifier  = (int)(evt->state & gtk_accelerator_get_default_mod_mask());
 
-    /* ── Return/Enter: open archives inline ── */
+    /* ── Return/Enter: open archive inline if one file selected ── */
     if (modifier == 0 &&
-        (evt->keyval == GDK_KEY_Return ||
-         evt->keyval == GDK_KEY_KP_Enter ||
-         evt->keyval == GDK_KEY_ISO_Enter))
+        (keyval == GDK_KEY_Return ||
+         keyval == GDK_KEY_KP_Enter ||
+         keyval == GDK_KEY_ISO_Enter))
     {
         FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
         if (sel && fm_file_info_list_get_length(sel) == 1)
         {
             FmFileInfo *fi = fm_file_info_list_peek_head(sel);
-            if (!fm_file_info_is_dir(fi) && rdfm_is_archive(fm_file_info_get_name(fi)))
+            if (!fm_file_info_is_dir(fi) &&
+                rdfm_is_archive(fm_file_info_get_name(fi)))
             {
                 rdfm_archive_view_file(GTK_WINDOW(win), fi);
                 fm_file_info_list_unref(sel);
@@ -524,50 +539,96 @@ static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMa
             }
         }
         if (sel) fm_file_info_list_unref(sel);
-        return FALSE;
+        return FALSE;   /* let FmStandardView open dirs / normal files */
     }
 
-    /* ── Movement: down ── (list: j  |  icon/compact/thumbnail: j) */
-    if (MATCHES_LUA("list", "move_down", GDK_KEY_j, 0) ||
-        MATCHES_LUA("icon", "move_down", GDK_KEY_j, 0))
+    /* ── Movement keys ───────────────────────────────────────────────────
+     *
+     * GtkTreeView  (list view): move-cursor uses GTK_MOVEMENT_DISPLAY_LINES
+     * GtkIconView  (icon/compact/thumbnail): move-cursor uses
+     *              GTK_MOVEMENT_DISPLAY_LINES too for up/down in a grid, but
+     *              we must check the widget type before emitting because the
+     *              signal signature is the same while the internal handling
+     *              differs — and emitting the wrong movement type on an
+     *              IconView segfaults in older GTK3 versions.
+     *
+     * Safest approach: synthesise a real GdkEventKey and let GTK dispatch it
+     * as if the user pressed the arrow key. That way GTK's own handlers for
+     * each widget type take over and we don't touch the internals at all.
+     */
+
+    gboolean is_tree = GTK_IS_TREE_VIEW(inner);
+    gboolean is_icon = GTK_IS_ICON_VIEW(inner);
+
+    /* j → move down */
+    if (_key_matches("list", "move_down", GDK_KEY_j, 0, keyval, modifier) ||
+        _key_matches("icon", "move_down", GDK_KEY_j, 0, keyval, modifier))
     {
-        g_signal_emit_by_name(inner, "move-cursor",
-                              GTK_MOVEMENT_DISPLAY_LINES, 1);
+        if (is_tree)
+            g_signal_emit_by_name(inner, "move-cursor",
+                                  GTK_MOVEMENT_DISPLAY_LINES, 1, NULL);
+        else if (is_icon)
+            g_signal_emit_by_name(inner, "move-cursor",
+                                  GTK_MOVEMENT_DISPLAY_LINES, 1, NULL);
         return TRUE;
     }
 
-    /* ── Movement: up ── */
-    if (MATCHES_LUA("list", "move_up", GDK_KEY_k, 0) ||
-        MATCHES_LUA("icon", "move_up", GDK_KEY_k, 0))
+    /* k → move up */
+    if (_key_matches("list", "move_up", GDK_KEY_k, 0, keyval, modifier) ||
+        _key_matches("icon", "move_up", GDK_KEY_k, 0, keyval, modifier))
     {
-        g_signal_emit_by_name(inner, "move-cursor",
-                              GTK_MOVEMENT_DISPLAY_LINES, -1);
+        if (is_tree)
+            g_signal_emit_by_name(inner, "move-cursor",
+                                  GTK_MOVEMENT_DISPLAY_LINES, -1, NULL);
+        else if (is_icon)
+            g_signal_emit_by_name(inner, "move-cursor",
+                                  GTK_MOVEMENT_DISPLAY_LINES, -1, NULL);
         return TRUE;
     }
 
-    /* ── Navigation: go back (history) ── */
-    if (MATCHES_LUA("universal", "go_back", GDK_KEY_h, 0))
+    /* icon-only: left/right */
+    if (is_icon) {
+        if (_key_matches("icon", "move_left",  GDK_KEY_h, 0, keyval, modifier))
+        {
+            g_signal_emit_by_name(inner, "move-cursor",
+                                  GTK_MOVEMENT_VISUAL_POSITIONS, -1, NULL);
+            return TRUE;
+        }
+        if (_key_matches("icon", "move_right", GDK_KEY_l, 0, keyval, modifier))
+        {
+            g_signal_emit_by_name(inner, "move-cursor",
+                                  GTK_MOVEMENT_VISUAL_POSITIONS, 1, NULL);
+            return TRUE;
+        }
+    }
+
+    /* ── Navigation (universal) ─────────────────────────────────────────── */
+
+    /* h → back (list), or back when not in icon view with h=left */
+    if (!is_icon &&
+        _key_matches("universal", "go_back", GDK_KEY_h, 0, keyval, modifier))
     {
         on_go_back(NULL, win);
         return TRUE;
     }
 
-    /* ── Navigation: go forward (history) ── */
-    if (MATCHES_LUA("universal", "go_forward", GDK_KEY_l, 0))
+    /* l → forward (list only — icon uses l for right movement above) */
+    if (!is_icon &&
+        _key_matches("universal", "go_forward", GDK_KEY_l, 0, keyval, modifier))
     {
         on_go_forward(NULL, win);
         return TRUE;
     }
 
-    /* ── Navigation: go up one level ── */
-    if (MATCHES_LUA("universal", "go_parent", GDK_KEY_BackSpace, 0))
+    /* BackSpace → up one level */
+    if (_key_matches("universal", "go_parent", GDK_KEY_BackSpace, 0, keyval, modifier))
     {
         on_go_up(NULL, win);
         return TRUE;
     }
 
-    /* ── Navigation: go home ── */
-    if (MATCHES_LUA("universal", "go_home", GDK_KEY_H, GDK_SHIFT_MASK))
+    /* Shift+H → home */
+    if (_key_matches("universal", "go_home", GDK_KEY_H, GDK_SHIFT_MASK, keyval, modifier))
     {
         on_go_home(NULL, win);
         return TRUE;
@@ -575,8 +636,6 @@ static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMa
 
     return FALSE;
 }
-
-#undef MATCHES_LUA
 
 static void on_bookmark(GtkMenuItem* mi, FmMainWin* win)
 {
@@ -1438,7 +1497,11 @@ static void on_arc_extract(GtkAction *act, FmMainWin *win)
 {
     FmFileInfoList *files = fm_folder_view_dup_selected_files(win->folder_view);
     if (!files) return;
-    rdfm_archive_extract_files(GTK_WINDOW(win), files);
+    /* Pass the current browsing directory so the extract dialog defaults
+     * to where the user IS, not to where the archive file lives. */
+    char *cwd = fm_path_to_str(fm_tab_page_get_cwd(win->current_page));
+    rdfm_archive_extract_files(GTK_WINDOW(win), files, cwd);
+    g_free(cwd);
     fm_file_info_list_unref(files);
 }
 
@@ -2742,14 +2805,12 @@ static void switch_to_prev_tab(FmMainWin* win)
 static gboolean on_key_press_event(GtkWidget* w, GdkEventKey* evt)
 {
     FmMainWin* win = FM_MAIN_WIN(w);
-    int modifier = evt->state & gtk_accelerator_get_default_mod_mask();
+    guint keyval  = evt->keyval;
+    int  modifier = (int)(evt->state & gtk_accelerator_get_default_mod_mask());
 
-/* Lua-aware match: checks the Lua keybinds table first, compiled-in default
- * second.  Only used in on_key_press_event — do NOT make it file-scoped so
- * it doesn't collide with the identical macro in on_view_key_press_event. */
+/* Shorthand for this function only */
 #define KM(sec, act, dkv, dmod) \
-    ( rdfm_lua_keybind_matches((sec), (act), evt->keyval, modifier) || \
-      (!rdfm_lua_loaded() && (evt->keyval == (guint)(dkv)) && (modifier == (guint)(dmod))) )
+    _key_matches((sec), (act), (dkv), (dmod), keyval, modifier)
 
     /* ── Universal: new tab ── Ctrl+t */
     if (KM("universal", "new_tab", GDK_KEY_t, GDK_CONTROL_MASK))
@@ -2775,20 +2836,17 @@ static gboolean on_key_press_event(GtkWidget* w, GdkEventKey* evt)
     /* ── Universal: next tab ── Ctrl+Tab / Ctrl+PageDown */
     if (KM("universal", "next_tab", GDK_KEY_Tab,       GDK_CONTROL_MASK) ||
         KM("universal", "next_tab", GDK_KEY_Page_Down, GDK_CONTROL_MASK) ||
-        (!rdfm_lua_loaded() &&
-         (evt->keyval == GDK_KEY_ISO_Left_Tab) &&
-         (modifier == GDK_CONTROL_MASK)))
+        (keyval == GDK_KEY_ISO_Left_Tab && modifier == (int)GDK_CONTROL_MASK))
     {
         switch_to_next_tab(win);
         return TRUE;
     }
 
     /* ── Universal: prev tab ── Ctrl+Shift+Tab / Ctrl+PageUp */
-    if (KM("universal", "prev_tab", GDK_KEY_Page_Up, GDK_CONTROL_MASK) ||
-        KM("universal", "prev_tab", GDK_KEY_Tab,     GDK_CONTROL_MASK|GDK_SHIFT_MASK) ||
-        (!rdfm_lua_loaded() &&
-         (evt->keyval == GDK_KEY_ISO_Left_Tab) &&
-         (modifier == (GDK_CONTROL_MASK|GDK_SHIFT_MASK))))
+    if (KM("universal", "prev_tab", GDK_KEY_Page_Up,   GDK_CONTROL_MASK) ||
+        KM("universal", "prev_tab", GDK_KEY_Tab, (int)(GDK_CONTROL_MASK|GDK_SHIFT_MASK)) ||
+        (keyval == GDK_KEY_ISO_Left_Tab &&
+         modifier == (int)(GDK_CONTROL_MASK|GDK_SHIFT_MASK)))
     {
         switch_to_prev_tab(win);
         return TRUE;
@@ -2803,7 +2861,7 @@ static gboolean on_key_press_event(GtkWidget* w, GdkEventKey* evt)
         return TRUE;
     }
 
-    /* ── Universal: reload / refresh ── Ctrl+r or F5 */
+    /* ── Universal: reload ── Ctrl+r or F5 */
     if (KM("universal", "reload", GDK_KEY_r, GDK_CONTROL_MASK) ||
         KM("universal", "reload", GDK_KEY_F5, 0))
     {
@@ -2811,42 +2869,21 @@ static gboolean on_key_press_event(GtkWidget* w, GdkEventKey* evt)
         return TRUE;
     }
 
-    /* ── Universal: focus path bar ── / or ~ (bare, no modifier) */
-    if (!rdfm_lua_loaded() &&
-        modifier == 0 &&
-        (evt->keyval == '/' || evt->keyval == '~'))
+    /* ── Focus path bar ── / or ~ (no modifier, bare key) */
+    if (modifier == 0 && (keyval == '/' || keyval == '~'))
     {
         if (!gtk_widget_is_focus(GTK_WIDGET(win->location)))
         {
             gtk_widget_grab_focus(GTK_WIDGET(win->location));
-            char path[] = { (char)evt->keyval, '\0' };
-            gtk_entry_set_text(GTK_ENTRY(win->location), path);
-            gtk_editable_set_position(GTK_EDITABLE(win->location), -1);
-            return TRUE;
-        }
-    }
-    else if (KM("universal", "focus_path", '/', 0) ||
-             KM("universal", "focus_path", '~', 0))
-    {
-        if (!gtk_widget_is_focus(GTK_WIDGET(win->location)))
-        {
-            gtk_widget_grab_focus(GTK_WIDGET(win->location));
-            /* Use the configured key char as the seed character */
-            const char *accel = rdfm_lua_keybind_for("universal", "focus_path");
-            if (accel && accel[0] && !accel[1]) {  /* single bare char */
-                char seed[] = { accel[0], '\0' };
-                gtk_entry_set_text(GTK_ENTRY(win->location), seed);
-            } else {
-                /* multiple-char or modifier-based binding — just focus, no seed */
-                gtk_entry_set_text(GTK_ENTRY(win->location), "");
-            }
+            char seed[] = { (char)keyval, '\0' };
+            gtk_entry_set_text(GTK_ENTRY(win->location), seed);
             gtk_editable_set_position(GTK_EDITABLE(win->location), -1);
             return TRUE;
         }
     }
 
-    /* ── Universal: Escape — cancel path bar input ── */
-    if (evt->keyval == GDK_KEY_Escape && modifier == 0)
+    /* ── Escape: cancel path bar input ── */
+    if (keyval == GDK_KEY_Escape && modifier == 0)
     {
         if (gtk_widget_is_focus(GTK_WIDGET(win->location)))
         {
@@ -2859,11 +2896,11 @@ static gboolean on_key_press_event(GtkWidget* w, GdkEventKey* evt)
         }
     }
 
-    /* ── Alt + 0–9: jump to nth tab (not remappable — structural) ── */
-    if (modifier == GDK_MOD1_MASK &&
-        evt->keyval >= '0' && evt->keyval <= '9')
+    /* ── Alt+0–9: jump to nth tab ── */
+    if (modifier == (int)GDK_MOD1_MASK &&
+        keyval >= '0' && keyval <= '9')
     {
-        int n = (evt->keyval == '0') ? 9 : (int)(evt->keyval - '1');
+        int n = (keyval == '0') ? 9 : (int)(keyval - '1');
         gtk_notebook_set_current_page(win->notebook, n);
         return TRUE;
     }

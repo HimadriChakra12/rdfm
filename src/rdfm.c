@@ -46,24 +46,21 @@
 #include "rdfm.h"
 #include "single-inst.h"
 #include "rdfm-lua.h"
+#include "rdfm-archive.h"
 
-/* ── keybinds.conf loader ────────────────────────────────────────────────── *
+/* ── keybind loader ───────────────────────────────────────────────────────── *
  *
- * Reads ~/.config/rdfm/keybinds.conf (user) and falls back to the system
- * copy in $XDG_DATA_DIRS/rdfm/keybinds.conf when the user file is absent.
- * If neither exists, built-in defaults from main_win_actions[] apply.
- *
- * Format: one "ActionName = <Mod>key" entry per line, section headers and
- * # comments ignored.  The accel path for action Foo in group "Main" is
- * "<Actions>/Main/Foo".
+ * Priority:
+ *   1. rdfm.lua  keybinds{}  (Lua-aware GTK accel-map entries set here)
+ *   2. keybinds.conf fallback (if rdfm.lua was not found/loaded)
+ *   3. Built-in defaults from main_win_actions[]
  */
 static void _apply_keybinds_from_file(const char *path)
 {
-    GKeyFile *kf = g_key_file_new();
+    GKeyFile *kf  = g_key_file_new();
     GError   *err = NULL;
 
-    if (!g_key_file_load_from_file(kf, path,
-                                   G_KEY_FILE_NONE, &err)) {
+    if (!g_key_file_load_from_file(kf, path, G_KEY_FILE_NONE, &err)) {
         if (err->code != G_FILE_ERROR_NOENT)
             g_warning("keybinds: %s: %s", path, err->message);
         g_error_free(err);
@@ -77,33 +74,23 @@ static void _apply_keybinds_from_file(const char *path)
         for (int k = 0; keys && keys[k]; k++) {
             gchar *val = g_key_file_get_string(kf, groups[g], keys[k], NULL);
             if (!val) continue;
-
-            /* strip inline comments ("value # comment") */
             char *hash = strchr(val, '#');
             if (hash) *hash = '\0';
             g_strstrip(val);
-
             if (!*val) { g_free(val); continue; }
 
-            /* Build accel path: <Actions>/Main/<ActionName>
-             * Key name is used directly (section is ignored). */
             gchar *accel_path = g_strdup_printf("<Actions>/Main/%s", keys[k]);
-
             if (g_ascii_strcasecmp(val, "disabled") == 0) {
-                /* Explicitly disable: set to 0/no modifier */
                 gtk_accel_map_change_entry(accel_path, 0, 0, TRUE);
             } else {
-                guint          accel_key = 0;
-                GdkModifierType accel_mod = 0;
-                gtk_accelerator_parse(val, &accel_key, &accel_mod);
-                if (accel_key != 0)
-                    gtk_accel_map_change_entry(accel_path,
-                                              accel_key, accel_mod, TRUE);
+                guint kv = 0; GdkModifierType mods = 0;
+                gtk_accelerator_parse(val, &kv, &mods);
+                if (kv != 0)
+                    gtk_accel_map_change_entry(accel_path, kv, mods, TRUE);
                 else
-                    g_warning("keybinds: '%s' = '%s': bad accelerator string",
+                    g_warning("keybinds: '%s' = '%s': bad accelerator",
                               keys[k], val);
             }
-
             g_free(accel_path);
             g_free(val);
         }
@@ -113,9 +100,51 @@ static void _apply_keybinds_from_file(const char *path)
     g_key_file_free(kf);
 }
 
+static void _apply_keybinds_from_lua(void)
+{
+    static const struct { const char *action; const char *accel_path; } MAP[] = {
+        { "new_tab",       "<Actions>/Main/NewTab"       },
+        { "close_tab",     "<Actions>/Main/CloseTab"     },
+        { "new_win",       "<Actions>/Main/NewWin"       },
+        { "next_tab",      "<Actions>/Main/NextTab"      },
+        { "prev_tab",      "<Actions>/Main/PrevTab"      },
+        { "rename",        "<Actions>/Main/Rename"       },
+        { "copy",          "<Actions>/Main/Copy"         },
+        { "cut",           "<Actions>/Main/Cut"          },
+        { "paste",         "<Actions>/Main/Paste"        },
+        { "delete",        "<Actions>/Main/Delete"       },
+        { "trash",         "<Actions>/Main/Trash"        },
+        { "new_folder",    "<Actions>/Main/NewFolder"    },
+        { "select_all",    "<Actions>/Main/SelectAll"    },
+        { "invert_sel",    "<Actions>/Main/InvertSelect" },
+        { "toggle_hidden", "<Actions>/Main/ShowHidden"   },
+        { "reload",        "<Actions>/Main/Reload"       },
+        { "extract_here",  "<Actions>/Main/ExtractHere"  },
+        { "compress",      "<Actions>/Main/Compress"     },
+        { NULL, NULL }
+    };
+    for (int i = 0; MAP[i].action; i++) {
+        const char *accel = rdfm_lua_keybind_for("universal", MAP[i].action);
+        if (!accel) continue;
+        if (g_ascii_strcasecmp(accel, "false")    == 0 ||
+            g_ascii_strcasecmp(accel, "disabled") == 0) {
+            gtk_accel_map_change_entry(MAP[i].accel_path, 0, 0, TRUE);
+            continue;
+        }
+        guint kv = 0; GdkModifierType mods = 0;
+        gtk_accelerator_parse(accel, &kv, &mods);
+        if (kv == 0) kv = gdk_keyval_from_name(accel);
+        if (kv != 0 && kv != GDK_KEY_VoidSymbol)
+            gtk_accel_map_change_entry(MAP[i].accel_path, kv, mods, TRUE);
+    }
+}
+
 static void rdfm_load_keybinds(void)
 {
-    /* 1. user file: ~/.config/rdfm/keybinds.conf */
+    if (rdfm_lua_loaded()) {
+        _apply_keybinds_from_lua();
+        return;
+    }
     gchar *user_path = g_build_filename(g_get_user_config_dir(),
                                         "rdfm", "keybinds.conf", NULL);
     if (g_file_test(user_path, G_FILE_TEST_EXISTS)) {
@@ -124,8 +153,6 @@ static void rdfm_load_keybinds(void)
         return;
     }
     g_free(user_path);
-
-    /* 2. fallback: system data dirs (e.g. /usr/share/rdfm/keybinds.conf) */
     const gchar * const *sys_dirs = g_get_system_data_dirs();
     for (int i = 0; sys_dirs && sys_dirs[i]; i++) {
         gchar *sys_path = g_build_filename(sys_dirs[i],
@@ -137,8 +164,7 @@ static void rdfm_load_keybinds(void)
         }
         g_free(sys_path);
     }
-
-    /* 3. nothing found — built-in defaults from main_win_actions[] apply */
+    /* built-in defaults from main_win_actions[] apply */
 }
 
 static int signal_pipe[2] = {-1, -1};
@@ -160,6 +186,8 @@ static gboolean desktop_pref = FALSE;
 static char* set_wallpaper = NULL;
 static char* wallpaper_mode = NULL;
 static gboolean new_win = FALSE;
+
+static gboolean no_archive = FALSE;   /* --no-archive flag */
 #if FM_CHECK_VERSION(1, 0, 2)
 static gboolean find_files = FALSE;
 #endif
@@ -185,6 +213,7 @@ static GOptionEntry opt_entries[] =
     { "wallpaper-mode", '\0', 0, G_OPTION_ARG_STRING, &wallpaper_mode, N_("Set mode of desktop wallpaper. MODE=(color|stretch|fit|crop|center|tile|screen)"), N_("MODE") },
     { "show-pref", '\0', 0, G_OPTION_ARG_INT, &show_pref, N_("Open Preferences dialog on the page N"), N_("N") },
     { "new-win", 'n', 0, G_OPTION_ARG_NONE, &new_win, N_("Open new window"), NULL },
+    { "no-archive", '\0', 0, G_OPTION_ARG_NONE, &no_archive, N_("Disable built-in archive handling (archives open with default app)"), NULL },
 #if FM_CHECK_VERSION(1, 0, 2)
     { "find-files", 'f', 0, G_OPTION_ARG_NONE, &find_files, N_("Open a Find Files window"), NULL },
 #endif
@@ -368,7 +397,11 @@ int main(int argc, char** argv)
     fm_app_config_load_from_profile(FM_APP_CONFIG(config), profile);
     g_signal_connect(config, "changed::saved_search", G_CALLBACK(on_config_changed), NULL);
 
-    /* apply keybinds: user ~/.config/rdfm/keybinds.conf → system fallback → built-ins */
+    /* --no-archive: disable archive subsystem if requested */
+    if (no_archive)
+        rdfm_archive_enabled = FALSE;
+
+    /* apply keybinds: Lua → keybinds.conf → built-ins */
     rdfm_load_keybinds();
 
     /* apply theme overrides from config — works regardless of GTK version */
