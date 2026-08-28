@@ -407,20 +407,37 @@ static GtkWidget *_fv_get_inner_widget(FmFolderView *fv)
     return _fv_find_inner(GTK_WIDGET(fv));
 }
 
-/* Called on FmFolderView "map" — fires every time the view is shown with
- * content, so the inner GtkTreeView/GtkIconView is guaranteed to exist.
- * We only do the setup once (guard via object data). */
+/*
+ * _fv_connect_vim_keys()
+ *
+ * Connects key/button-press handlers to the inner GtkTreeView or GtkIconView
+ * of `fv`.  Safe to call multiple times — disconnects from the previously
+ * stored inner widget first so view-mode switches (icon↔list↔compact…) always
+ * end up with exactly one live connection on the current inner widget.
+ *
+ * Called from two places:
+ *   1. The "map" signal on FmFolderView — covers the initial load.
+ *   2. on_change_mode() immediately after fm_standard_view_set_mode() —
+ *      covers view-mode switches, where the FmFolderView container stays
+ *      mapped so "map" never re-fires.
+ */
 static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
 {
-    /* already set up for this fv */
-    if (g_object_get_data(G_OBJECT(fv), "rdfm-inner-widget"))
-        return;
+    /* Disconnect from the previous inner widget if we had one */
+    GtkWidget *old_inner = g_object_get_data(G_OBJECT(fv), "rdfm-inner-widget");
+    if (old_inner) {
+        g_signal_handlers_disconnect_by_func(old_inner,
+                                             on_view_key_press_event, win);
+        g_signal_handlers_disconnect_by_func(old_inner,
+                                             on_view_button_press_event, win);
+        g_object_set_data(G_OBJECT(fv), "rdfm-inner-widget", NULL);
+    }
 
     GtkWidget *inner = _fv_get_inner_widget(fv);
     if (!inner)
         return;
 
-    /* Disable GtkTreeView's built-in typeahead search -- it intercepts every
+    /* Disable GtkTreeView's built-in typeahead search — it intercepts every
      * printable keypress and opens a search popup, eating j/k/h/l. */
     if (GTK_IS_TREE_VIEW(inner))
         gtk_tree_view_set_enable_search(GTK_TREE_VIEW(inner), FALSE);
@@ -430,7 +447,8 @@ static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
     g_signal_connect(inner, "button-press-event",
                      G_CALLBACK(on_view_button_press_event), win);
 
-    /* stash inner widget pointer for disconnect on tab close */
+    /* Remember this inner widget so we can disconnect it on the next
+     * mode switch or tab close. */
     g_object_set_data(G_OBJECT(fv), "rdfm-inner-widget", inner);
 }
 
@@ -1610,10 +1628,13 @@ static void on_change_mode(GtkRadioAction* act, GtkRadioAction *cur, FmMainWin* 
     int mode = gtk_radio_action_get_current_value(cur);
     if (win->in_update)
         return;
-    /* FmStandardView replaces its inner widget when mode changes.
-     * Reset the sentinel so _fv_connect_vim_keys reconnects on next map. */
-    g_object_set_data(G_OBJECT(win->folder_view), "rdfm-inner-widget", NULL);
+    /* fm_standard_view_set_mode() tears down the old inner GtkTreeView /
+     * GtkIconView and creates a new one.  _fv_connect_vim_keys() handles
+     * disconnecting from the old widget and reconnecting to the new one.
+     * We call it directly here because the FmFolderView container stays
+     * mapped through a mode switch, so its "map" signal never re-fires. */
     fm_standard_view_set_mode(FM_STANDARD_VIEW(win->folder_view), mode);
+    _fv_connect_vim_keys(win->folder_view, win);
     if (win->current_page->own_config)
         fm_app_config_save_config_for_path(fm_folder_view_get_cwd(win->folder_view),
                                            win->current_page->sort_type,
