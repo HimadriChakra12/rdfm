@@ -29,10 +29,16 @@
 
 static lua_State *L = NULL;
 
+/* Directory of the currently-loading config file — used by include() to
+ * resolve relative paths.  Set before luaL_dofile(), cleared after. */
+static char *_config_dir = NULL;
+
 /* ── helpers: safe library set ───────────────────────────────────────────── */
 /*
- * We open only the pure-computation standard libs.  No io/os/package/debug
- * so a misconfigured or malicious rdfm.lua cannot touch arbitrary files.
+ * We open only the pure-computation standard libs plus a scoped include().
+ * Full io/os/package/debug are NOT opened so the config can't touch
+ * arbitrary files — it can only include other .lua files that live in the
+ * same config directory.
  */
 static const luaL_Reg _safe_libs[] = {
     { LUA_GNAME,      luaopen_base   },
@@ -48,6 +54,84 @@ static void _open_safe_libs(lua_State *state)
         luaL_requiref(state, lib->name, lib->func, 1);
         lua_pop(state, 1);
     }
+}
+
+/*
+ * include(name)  /  require(name)
+ *
+ * Loads and executes  ~/.config/rdfm/<name>.lua  (or <name> if it already
+ * has a .lua suffix).  Returns whatever the file returns, just like a normal
+ * Lua module.  Sandboxed: only files inside the rdfm config dir can be loaded.
+ *
+ * Usage in rdfm.lua:
+ *   rdfm = {
+ *       config   = include("config"),    -- loads ~/.config/rdfm/config.lua
+ *       keybinds = include("keybinds"),  -- loads ~/.config/rdfm/keybinds.lua
+ *   }
+ *   -- or equivalently:
+ *   rdfm = {
+ *       config   = require("config"),
+ *       keybinds = require("keybinds"),
+ *   }
+ */
+static int _lua_include(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+
+    if (!_config_dir) {
+        lua_pushstring(state, "include(): config directory not set");
+        lua_error(state);
+        return 0;
+    }
+
+    /* Build the full path: config_dir/<name>.lua  (or config_dir/<name> if
+     * the caller already appended .lua) */
+    char *path;
+    if (g_str_has_suffix(name, ".lua"))
+        path = g_build_filename(_config_dir, name, NULL);
+    else
+        path = g_build_filename(_config_dir, g_strconcat(name, ".lua", NULL), NULL);
+
+    /* Security: the resolved path must still be inside _config_dir */
+    char *real = realpath(path, NULL);
+    char *real_dir = realpath(_config_dir, NULL);
+    g_free(path);
+
+    gboolean safe = real && real_dir &&
+                    g_str_has_prefix(real, real_dir);
+    free(real_dir);
+
+    if (!safe) {
+        free(real);
+        lua_pushfstring(state,
+            "include(): '%s' is outside the rdfm config directory", name);
+        lua_error(state);
+        return 0;
+    }
+
+    int rc = luaL_loadfile(state, real);
+    free(real);
+
+    if (rc != LUA_OK) {
+        lua_error(state);   /* error message already on stack */
+        return 0;
+    }
+
+    /* Execute the chunk; it may return one value (the module table) */
+    lua_call(state, 0, LUA_MULTRET);
+    return lua_gettop(state) - 1;  /* number of return values */
+}
+
+static void _register_include(lua_State *state)
+{
+    /* Register as both include() and require() so both styles work.
+     * We shadow the built-in require() from luaopen_base — that's fine
+     * because full package loading is intentionally disabled anyway. */
+    lua_pushcfunction(state, _lua_include);
+    lua_setglobal(state, "include");
+
+    lua_pushcfunction(state, _lua_include);
+    lua_setglobal(state, "require");
 }
 
 /* ── helpers: path resolution ────────────────────────────────────────────── */
@@ -107,15 +191,24 @@ gboolean rdfm_lua_load(void)
 
     gboolean ok = TRUE;
     if (load_path) {
+        /* Set config dir so include()/require() can resolve relative paths */
+        g_free(_config_dir);
+        _config_dir = g_path_get_dirname(load_path);
+
+        /* Register include() / require() now that _config_dir is set */
+        _register_include(ns);
+
         if (luaL_dofile(ns, load_path) != LUA_OK) {
             g_warning("rdfm-lua: error in '%s': %s",
                       load_path, lua_tostring(ns, -1));
             lua_pop(ns, 1);
             ok = FALSE;
-            /* Keep the (partially executed) state — safer than crashing. */
         } else {
             g_message("rdfm-lua: loaded '%s'", load_path);
         }
+
+        g_free(_config_dir);
+        _config_dir = NULL;
     } else {
         g_message("rdfm-lua: no rdfm.lua found; built-in defaults apply");
         ok = FALSE;  /* Callers fall back to .conf reader */

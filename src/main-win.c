@@ -427,8 +427,6 @@ static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
     GtkWidget *old_inner = g_object_get_data(G_OBJECT(fv), "rdfm-inner-widget");
     if (old_inner) {
         g_signal_handlers_disconnect_by_func(old_inner,
-                                             on_view_key_press_event, win);
-        g_signal_handlers_disconnect_by_func(old_inner,
                                              on_view_button_press_event, win);
         g_object_set_data(G_OBJECT(fv), "rdfm-inner-widget", NULL);
     }
@@ -437,18 +435,15 @@ static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
     if (!inner)
         return;
 
-    /* Disable GtkTreeView's built-in typeahead search — it intercepts every
-     * printable keypress and opens a search popup, eating j/k/h/l. */
-    if (GTK_IS_TREE_VIEW(inner))
-        gtk_tree_view_set_enable_search(GTK_TREE_VIEW(inner), FALSE);
-
-    g_signal_connect(inner, "key-press-event",
-                     G_CALLBACK(on_view_key_press_event), win);
+    /* Key events are handled in on_key_press_event() at the FmMainWin
+     * (GtkWindow) class level — that runs before any child widget sees the
+     * event, so GtkTreeView's typeahead search can never intercept hjkl.
+     * We only need button-press here for context-menu / double-click logic. */
     g_signal_connect(inner, "button-press-event",
                      G_CALLBACK(on_view_button_press_event), win);
 
-    /* Remember this inner widget so we can disconnect it on the next
-     * mode switch or tab close. */
+    /* Store inner widget pointer so on_key_press_event can query it and
+     * so we can disconnect cleanly on the next mode switch or tab close. */
     g_object_set_data(G_OBJECT(fv), "rdfm-inner-widget", inner);
 }
 
@@ -504,39 +499,42 @@ static gboolean on_view_button_press_event(GtkWidget* inner, GdkEventButton* evt
 /*
  * _key_matches(section, action, default_keyval, default_mod, keyval, mod)
  *
- * Returns TRUE when the live keyval+mod matches either:
- *   a) the accelerator stored in rdfm.keybinds.<section>.<action>  (Lua path)
- *   b) the compiled-in default_keyval/default_mod                   (fallback)
- *
- * The fallback fires whenever the Lua entry is absent OR Lua is not loaded —
- * fixing the previous MATCHES_LUA macro which only used the fallback when Lua
- * was completely absent (rdfm_lua_loaded() == FALSE), breaking all bindings
- * when an rdfm.lua was loaded but did not contain a given key.
+ * Checks the Lua keybind table first, falls back to the compiled-in default
+ * when the Lua entry is absent or unparseable — regardless of whether Lua
+ * loaded at all.
  */
 static inline gboolean _key_matches(const char *section, const char *action,
                                     guint def_kv, guint def_mod,
                                     guint keyval, int modifier)
 {
-    /* Try Lua first */
     const char *accel = rdfm_lua_keybind_for(section, action);
     if (accel && *accel) {
         guint lua_kv = 0;
         GdkModifierType lua_mod = 0;
         gtk_accelerator_parse(accel, &lua_kv, &lua_mod);
         if (lua_kv == 0)
-            lua_kv = gdk_keyval_from_name(accel);   /* bare name: "j", "BackSpace" */
+            lua_kv = gdk_keyval_from_name(accel);
         if (lua_kv != 0 && lua_kv != GDK_KEY_VoidSymbol)
             return (keyval == lua_kv) && ((guint)modifier == (guint)lua_mod);
-        /* accel string unparseable — fall through to default */
     }
-    /* Compiled-in default */
     return (keyval == def_kv) && ((guint)modifier == def_mod);
+}
+
+/* Safe move-cursor emit — returns quietly if inner is neither tree nor icon */
+static void _emit_move(GtkWidget *inner, GtkMovementStep step, gint count)
+{
+    gboolean handled = FALSE;
+    g_signal_emit_by_name(inner, "move-cursor", step, count, &handled);
+    (void)handled;
 }
 
 static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMainWin* win)
 {
-    guint keyval   = evt->keyval;
-    int  modifier  = (int)(evt->state & gtk_accelerator_get_default_mod_mask());
+    guint keyval  = evt->keyval;
+    int modifier  = (int)(evt->state & gtk_accelerator_get_default_mod_mask());
+
+    gboolean is_tree = GTK_IS_TREE_VIEW(inner);
+    gboolean is_icon = GTK_IS_ICON_VIEW(inner);
 
     /* ── Return/Enter: open archive inline if one file selected ── */
     if (modifier == 0 &&
@@ -545,111 +543,116 @@ static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMa
          keyval == GDK_KEY_ISO_Enter))
     {
         FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
-        if (sel && fm_file_info_list_get_length(sel) == 1)
-        {
+        if (sel && fm_file_info_list_get_length(sel) == 1) {
             FmFileInfo *fi = fm_file_info_list_peek_head(sel);
             if (!fm_file_info_is_dir(fi) &&
-                rdfm_is_archive(fm_file_info_get_name(fi)))
-            {
+                rdfm_is_archive(fm_file_info_get_name(fi))) {
                 rdfm_archive_view_file(GTK_WINDOW(win), fi);
                 fm_file_info_list_unref(sel);
                 return TRUE;
             }
         }
         if (sel) fm_file_info_list_unref(sel);
-        return FALSE;   /* let FmStandardView open dirs / normal files */
+        return FALSE;
     }
 
-    /* ── Movement keys ───────────────────────────────────────────────────
+    /* ════════════════════════════════════════════════════════════════════
+     * LIST VIEW  (GtkTreeView)
+     * ════════════════════════════════════════════════════════════════════ */
+    if (is_tree) {
+        /* j/k — up/down one row */
+        if (_key_matches("list", "move_down", GDK_KEY_j, 0, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, 1);  return TRUE;
+        }
+        if (_key_matches("list", "move_up", GDK_KEY_k, 0, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, -1); return TRUE;
+        }
+        /* Ctrl+d / Ctrl+u — half page down/up */
+        if (_key_matches("list", "page_down", GDK_KEY_d, GDK_CONTROL_MASK, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_PAGES, 1);  return TRUE;
+        }
+        if (_key_matches("list", "page_up", GDK_KEY_u, GDK_CONTROL_MASK, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_PAGES, -1); return TRUE;
+        }
+        /* g / G — jump to top / bottom */
+        if (_key_matches("list", "move_top", GDK_KEY_g, 0, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_BUFFER_ENDS, -1); return TRUE;
+        }
+        if (_key_matches("list", "move_bottom", GDK_KEY_G, GDK_SHIFT_MASK, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_BUFFER_ENDS, 1);  return TRUE;
+        }
+        /* l — enter selected directory */
+        if (_key_matches("list", "open", GDK_KEY_l, 0, keyval, modifier)) {
+            FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
+            if (sel) {
+                FmFileInfo *fi = fm_file_info_list_peek_head(sel);
+                if (fi && fm_file_info_is_dir(fi))
+                    fm_main_win_chdir(win, fm_file_info_get_path(fi));
+                fm_file_info_list_unref(sel);
+            }
+            return TRUE;
+        }
+        /* h — go back in history */
+        if (_key_matches("universal", "go_back", GDK_KEY_h, 0, keyval, modifier)) {
+            on_go_back(NULL, win); return TRUE;
+        }
+        /* BackSpace — go up one level */
+        if (_key_matches("universal", "go_parent", GDK_KEY_BackSpace, 0, keyval, modifier)) {
+            on_go_up(NULL, win); return TRUE;
+        }
+        /* Shift+H — go home */
+        if (_key_matches("universal", "go_home", GDK_KEY_H, GDK_SHIFT_MASK, keyval, modifier)) {
+            on_go_home(NULL, win); return TRUE;
+        }
+        return FALSE;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════
+     * ICON / COMPACT / THUMBNAIL VIEW  (GtkIconView)
      *
-     * GtkTreeView  (list view): move-cursor uses GTK_MOVEMENT_DISPLAY_LINES
-     * GtkIconView  (icon/compact/thumbnail): move-cursor uses
-     *              GTK_MOVEMENT_DISPLAY_LINES too for up/down in a grid, but
-     *              we must check the widget type before emitting because the
-     *              signal signature is the same while the internal handling
-     *              differs — and emitting the wrong movement type on an
-     *              IconView segfaults in older GTK3 versions.
-     *
-     * Safest approach: synthesise a real GdkEventKey and let GTK dispatch it
-     * as if the user pressed the arrow key. That way GTK's own handlers for
-     * each widget type take over and we don't touch the internals at all.
-     */
-
-    gboolean is_tree = GTK_IS_TREE_VIEW(inner);
-    gboolean is_icon = GTK_IS_ICON_VIEW(inner);
-
-    /* j → move down */
-    if (_key_matches("list", "move_down", GDK_KEY_j, 0, keyval, modifier) ||
-        _key_matches("icon", "move_down", GDK_KEY_j, 0, keyval, modifier))
-    {
-        if (is_tree)
-            g_signal_emit_by_name(inner, "move-cursor",
-                                  GTK_MOVEMENT_DISPLAY_LINES, 1, NULL);
-        else if (is_icon)
-            g_signal_emit_by_name(inner, "move-cursor",
-                                  GTK_MOVEMENT_DISPLAY_LINES, 1, NULL);
-        return TRUE;
-    }
-
-    /* k → move up */
-    if (_key_matches("list", "move_up", GDK_KEY_k, 0, keyval, modifier) ||
-        _key_matches("icon", "move_up", GDK_KEY_k, 0, keyval, modifier))
-    {
-        if (is_tree)
-            g_signal_emit_by_name(inner, "move-cursor",
-                                  GTK_MOVEMENT_DISPLAY_LINES, -1, NULL);
-        else if (is_icon)
-            g_signal_emit_by_name(inner, "move-cursor",
-                                  GTK_MOVEMENT_DISPLAY_LINES, -1, NULL);
-        return TRUE;
-    }
-
-    /* icon-only: left/right */
+     * h/l = grid left/right here, so go_back/go_forward use Alt+Left/Right
+     * (browser-style) which don't conflict with any icon-view internals.
+     * ════════════════════════════════════════════════════════════════════ */
     if (is_icon) {
-        if (_key_matches("icon", "move_left",  GDK_KEY_h, 0, keyval, modifier))
-        {
-            g_signal_emit_by_name(inner, "move-cursor",
-                                  GTK_MOVEMENT_VISUAL_POSITIONS, -1, NULL);
-            return TRUE;
+        /* j/k — down/up one row in the grid */
+        if (_key_matches("icon", "move_down", GDK_KEY_j, 0, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, 1);  return TRUE;
         }
-        if (_key_matches("icon", "move_right", GDK_KEY_l, 0, keyval, modifier))
-        {
-            g_signal_emit_by_name(inner, "move-cursor",
-                                  GTK_MOVEMENT_VISUAL_POSITIONS, 1, NULL);
-            return TRUE;
+        if (_key_matches("icon", "move_up", GDK_KEY_k, 0, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, -1); return TRUE;
         }
-    }
-
-    /* ── Navigation (universal) ─────────────────────────────────────────── */
-
-    /* h → back (list), or back when not in icon view with h=left */
-    if (!is_icon &&
-        _key_matches("universal", "go_back", GDK_KEY_h, 0, keyval, modifier))
-    {
-        on_go_back(NULL, win);
-        return TRUE;
-    }
-
-    /* l → forward (list only — icon uses l for right movement above) */
-    if (!is_icon &&
-        _key_matches("universal", "go_forward", GDK_KEY_l, 0, keyval, modifier))
-    {
-        on_go_forward(NULL, win);
-        return TRUE;
-    }
-
-    /* BackSpace → up one level */
-    if (_key_matches("universal", "go_parent", GDK_KEY_BackSpace, 0, keyval, modifier))
-    {
-        on_go_up(NULL, win);
-        return TRUE;
-    }
-
-    /* Shift+H → home */
-    if (_key_matches("universal", "go_home", GDK_KEY_H, GDK_SHIFT_MASK, keyval, modifier))
-    {
-        on_go_home(NULL, win);
-        return TRUE;
+        /* h/l — left/right one column in the grid */
+        if (_key_matches("icon", "move_left", GDK_KEY_h, 0, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_VISUAL_POSITIONS, -1); return TRUE;
+        }
+        if (_key_matches("icon", "move_right", GDK_KEY_l, 0, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_VISUAL_POSITIONS, 1);  return TRUE;
+        }
+        /* Ctrl+d / Ctrl+u — page down/up */
+        if (_key_matches("icon", "page_down", GDK_KEY_d, GDK_CONTROL_MASK, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_PAGES, 1);  return TRUE;
+        }
+        if (_key_matches("icon", "page_up", GDK_KEY_u, GDK_CONTROL_MASK, keyval, modifier)) {
+            _emit_move(inner, GTK_MOVEMENT_PAGES, -1); return TRUE;
+        }
+        /* Alt+Left / Alt+Right — history back/forward */
+        if (_key_matches("universal", "go_back",
+                         GDK_KEY_Left, GDK_MOD1_MASK, keyval, modifier)) {
+            on_go_back(NULL, win); return TRUE;
+        }
+        if (_key_matches("universal", "go_forward",
+                         GDK_KEY_Right, GDK_MOD1_MASK, keyval, modifier)) {
+            on_go_forward(NULL, win); return TRUE;
+        }
+        /* BackSpace — go up one level */
+        if (_key_matches("universal", "go_parent", GDK_KEY_BackSpace, 0, keyval, modifier)) {
+            on_go_up(NULL, win); return TRUE;
+        }
+        /* Shift+H — go home */
+        if (_key_matches("universal", "go_home", GDK_KEY_H, GDK_SHIFT_MASK, keyval, modifier)) {
+            on_go_home(NULL, win); return TRUE;
+        }
+        return FALSE;
     }
 
     return FALSE;
@@ -2924,6 +2927,80 @@ static gboolean on_key_press_event(GtkWidget* w, GdkEventKey* evt)
         int n = (keyval == '0') ? 9 : (int)(keyval - '1');
         gtk_notebook_set_current_page(win->notebook, n);
         return TRUE;
+    }
+
+    /* ── View movement keys ─────────────────────────────────────────────
+     *
+     * Handled here at the GtkWindow level so GtkTreeView's typeahead
+     * search never sees them — the window key_press_event vfunc runs
+     * before any child widget's handler.
+     *
+     * Only fire when the path bar / search entry does NOT have focus.
+     */
+    if (!gtk_widget_is_focus(GTK_WIDGET(win->location)))
+    {
+        GtkWidget *inner = g_object_get_data(G_OBJECT(win->folder_view),
+                                             "rdfm-inner-widget");
+        if (inner) {
+            gboolean is_tree = GTK_IS_TREE_VIEW(inner);
+            gboolean is_icon = GTK_IS_ICON_VIEW(inner);
+
+            /* ── LIST VIEW ── */
+            if (is_tree) {
+                if (KM("list", "move_down",   GDK_KEY_j, 0)) {
+                    _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, 1);   return TRUE; }
+                if (KM("list", "move_up",     GDK_KEY_k, 0)) {
+                    _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, -1);  return TRUE; }
+                if (KM("list", "page_down",   GDK_KEY_d, GDK_CONTROL_MASK)) {
+                    _emit_move(inner, GTK_MOVEMENT_PAGES, 1);           return TRUE; }
+                if (KM("list", "page_up",     GDK_KEY_u, GDK_CONTROL_MASK)) {
+                    _emit_move(inner, GTK_MOVEMENT_PAGES, -1);          return TRUE; }
+                if (KM("list", "move_top",    GDK_KEY_g, 0)) {
+                    _emit_move(inner, GTK_MOVEMENT_BUFFER_ENDS, -1);    return TRUE; }
+                if (KM("list", "move_bottom", GDK_KEY_G, GDK_SHIFT_MASK)) {
+                    _emit_move(inner, GTK_MOVEMENT_BUFFER_ENDS, 1);     return TRUE; }
+                if (KM("list", "open",        GDK_KEY_l, 0)) {
+                    FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
+                    if (sel) {
+                        FmFileInfo *fi = fm_file_info_list_peek_head(sel);
+                        if (fi && fm_file_info_is_dir(fi))
+                            fm_main_win_chdir(win, fm_file_info_get_path(fi));
+                        fm_file_info_list_unref(sel);
+                    }
+                    return TRUE;
+                }
+                if (KM("universal", "go_back",   GDK_KEY_h,        0)) {
+                    on_go_back(NULL, win);  return TRUE; }
+                if (KM("universal", "go_parent", GDK_KEY_BackSpace, 0)) {
+                    on_go_up(NULL, win);    return TRUE; }
+                if (KM("universal", "go_home",   GDK_KEY_H, GDK_SHIFT_MASK)) {
+                    on_go_home(NULL, win);  return TRUE; }
+            }
+
+            /* ── ICON / COMPACT / THUMBNAIL VIEW ── */
+            if (is_icon) {
+                if (KM("icon", "move_down",  GDK_KEY_j, 0)) {
+                    _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES,    1);  return TRUE; }
+                if (KM("icon", "move_up",    GDK_KEY_k, 0)) {
+                    _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES,   -1);  return TRUE; }
+                if (KM("icon", "move_left",  GDK_KEY_h, 0)) {
+                    _emit_move(inner, GTK_MOVEMENT_VISUAL_POSITIONS, -1); return TRUE; }
+                if (KM("icon", "move_right", GDK_KEY_l, 0)) {
+                    _emit_move(inner, GTK_MOVEMENT_VISUAL_POSITIONS,  1); return TRUE; }
+                if (KM("icon", "page_down",  GDK_KEY_d, GDK_CONTROL_MASK)) {
+                    _emit_move(inner, GTK_MOVEMENT_PAGES, 1);             return TRUE; }
+                if (KM("icon", "page_up",    GDK_KEY_u, GDK_CONTROL_MASK)) {
+                    _emit_move(inner, GTK_MOVEMENT_PAGES, -1);            return TRUE; }
+                if (KM("universal", "go_back",    GDK_KEY_Left,  GDK_MOD1_MASK)) {
+                    on_go_back(NULL, win);   return TRUE; }
+                if (KM("universal", "go_forward", GDK_KEY_Right, GDK_MOD1_MASK)) {
+                    on_go_forward(NULL, win); return TRUE; }
+                if (KM("universal", "go_parent",  GDK_KEY_BackSpace, 0)) {
+                    on_go_up(NULL, win);     return TRUE; }
+                if (KM("universal", "go_home",    GDK_KEY_H, GDK_SHIFT_MASK)) {
+                    on_go_home(NULL, win);   return TRUE; }
+            }
+        }
     }
 
 #undef KM
