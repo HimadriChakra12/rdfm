@@ -124,16 +124,18 @@ static void _apply_keybinds_from_lua(void)
         { NULL, NULL }
     };
     for (int i = 0; MAP[i].action; i++) {
-        const char *accel = rdfm_lua_keybind_for("universal", MAP[i].action);
+        char *accel = rdfm_lua_keybind_for("universal", MAP[i].action);
         if (!accel) continue;
         if (g_ascii_strcasecmp(accel, "false")    == 0 ||
             g_ascii_strcasecmp(accel, "disabled") == 0) {
             gtk_accel_map_change_entry(MAP[i].accel_path, 0, 0, TRUE);
+            g_free(accel);
             continue;
         }
         guint kv = 0; GdkModifierType mods = 0;
         gtk_accelerator_parse(accel, &kv, &mods);
         if (kv == 0) kv = gdk_keyval_from_name(accel);
+        g_free(accel);
         if (kv != 0 && kv != GDK_KEY_VoidSymbol)
             gtk_accel_map_change_entry(MAP[i].accel_path, kv, mods, TRUE);
     }

@@ -389,7 +389,13 @@ static void on_folder_view_sel_changed(FmFolderView* fv, gint n_sel, FmMainWin* 
 /* Walk widget tree recursively to find GtkTreeView or GtkIconView */
 static GtkWidget *_fv_find_inner(GtkWidget *w)
 {
-    if (GTK_IS_TREE_VIEW(w) || GTK_IS_ICON_VIEW(w))
+    /* ExoTreeView extends GtkTreeView — GTK_IS_TREE_VIEW catches it.
+     * ExoIconView extends GtkContainer (NOT GtkIconView) — must check by name. */
+    if (GTK_IS_TREE_VIEW(w))
+        return w;
+    if (g_type_is_a(G_OBJECT_TYPE(w), g_type_from_name("ExoIconView")))
+        return w;
+    if (GTK_IS_ICON_VIEW(w))   /* plain GtkIconView fallback */
         return w;
     if (GTK_IS_CONTAINER(w)) {
         GList *children = gtk_container_get_children(GTK_CONTAINER(w));
@@ -427,6 +433,8 @@ static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
     GtkWidget *old_inner = g_object_get_data(G_OBJECT(fv), "rdfm-inner-widget");
     if (old_inner) {
         g_signal_handlers_disconnect_by_func(old_inner,
+                                             on_view_key_press_event, win);
+        g_signal_handlers_disconnect_by_func(old_inner,
                                              on_view_button_press_event, win);
         g_object_set_data(G_OBJECT(fv), "rdfm-inner-widget", NULL);
     }
@@ -435,15 +443,21 @@ static void _fv_connect_vim_keys(FmFolderView *fv, FmMainWin *win)
     if (!inner)
         return;
 
-    /* Key events are handled in on_key_press_event() at the FmMainWin
-     * (GtkWindow) class level — that runs before any child widget sees the
-     * event, so GtkTreeView's typeahead search can never intercept hjkl.
-     * We only need button-press here for context-menu / double-click logic. */
+    /* Disable ExoIconView typeahead. This runs AFTER libfm sets enable_search=TRUE
+     * so it wins. ExoIconView checks this flag at the top of its key_press_event
+     * class vfunc before activating search, so disabling it here is sufficient. */
+    GType exo_icon_type = g_type_from_name("ExoIconView");
+    if (exo_icon_type && g_type_is_a(G_OBJECT_TYPE(inner), exo_icon_type))
+        g_object_set(inner, "enable-search", FALSE, NULL);
+
+    /* key-press-event is G_SIGNAL_RUN_LAST — our instance handler fires
+     * before the class closure (ExoIconView/GtkTreeView typeahead search).
+     * Returning TRUE stops propagation before typeahead ever runs. */
+    g_signal_connect(inner, "key-press-event",
+                     G_CALLBACK(on_view_key_press_event), win);
     g_signal_connect(inner, "button-press-event",
                      G_CALLBACK(on_view_button_press_event), win);
 
-    /* Store inner widget pointer so on_key_press_event can query it and
-     * so we can disconnect cleanly on the next mode switch or tab close. */
     g_object_set_data(G_OBJECT(fv), "rdfm-inner-widget", inner);
 }
 
@@ -507,16 +521,19 @@ static inline gboolean _key_matches(const char *section, const char *action,
                                     guint def_kv, guint def_mod,
                                     guint keyval, int modifier)
 {
-    const char *accel = rdfm_lua_keybind_for(section, action);
+    char *accel = rdfm_lua_keybind_for(section, action);
     if (accel && *accel) {
         guint lua_kv = 0;
         GdkModifierType lua_mod = 0;
         gtk_accelerator_parse(accel, &lua_kv, &lua_mod);
         if (lua_kv == 0)
             lua_kv = gdk_keyval_from_name(accel);
+        g_free(accel);
         if (lua_kv != 0 && lua_kv != GDK_KEY_VoidSymbol)
             return (keyval == lua_kv) && ((guint)modifier == (guint)lua_mod);
+        return (keyval == def_kv) && ((guint)modifier == def_mod);
     }
+    g_free(accel);
     return (keyval == def_kv) && ((guint)modifier == def_mod);
 }
 
@@ -534,7 +551,13 @@ static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMa
     int modifier  = (int)(evt->state & gtk_accelerator_get_default_mod_mask());
 
     gboolean is_tree = GTK_IS_TREE_VIEW(inner);
-    gboolean is_icon = GTK_IS_ICON_VIEW(inner);
+    gboolean is_icon = GTK_IS_ICON_VIEW(inner) ||
+                       g_type_is_a(G_OBJECT_TYPE(inner),
+                                   g_type_from_name("ExoIconView"));
+
+    fprintf(stderr, "VIEW_KEY: 0x%x '%c' tree=%d icon=%d type=%s\n",
+            keyval, (keyval>31&&keyval<127?(char)keyval:'?'),
+            is_tree, is_icon, G_OBJECT_TYPE_NAME(inner));
 
     /* ── Return/Enter: open archive inline if one file selected ── */
     if (modifier == 0 &&
@@ -2011,18 +2034,9 @@ gint fm_main_win_add_tab(FmMainWin* win, FmPath* path)
     FmTabPage* page = fm_tab_page_new(path);
     GtkWidget* gpage = GTK_WIDGET(page);
     FmTabLabel* label = page->tab_label;
-    FmFolderView* folder_view = fm_tab_page_get_folder_view(page);
     gint ret;
 
     gtk_paned_set_position(GTK_PANED(page), app_config->splitter_pos);
-
-    /* Connect vim keybinds on "map" (not "realize") — inner GtkTreeView/
-     * GtkIconView is created by FmStandardView only when the folder loads,
-     * which happens after realize.  "map" fires every time the view becomes
-     * visible with its content present; the callback guards against repeat
-     * setup with a g_object_set_data sentinel. */
-    g_signal_connect(folder_view, "map",
-                     G_CALLBACK(_fv_connect_vim_keys), win);
 
     g_signal_connect_swapped(label->close_btn, "clicked", G_CALLBACK(gtk_widget_destroy), page);
     g_signal_connect(label, "button-press-event", G_CALLBACK(on_tab_label_button_pressed), page);
@@ -2522,6 +2536,10 @@ static void on_tab_page_loaded(FmTabPage *page, FmMainWin *win)
 {
     FmFolderView *folder_view = fm_tab_page_get_folder_view(page);
 
+    /* The inner ExoTreeView/ExoIconView is guaranteed to exist now that
+     * the folder has finished loading. Connect our key handler here. */
+    _fv_connect_vim_keys(folder_view, win);
+
     /* update folder popup */
     fm_folder_view_set_active(folder_view, FALSE);
     fm_folder_view_add_popup(folder_view, GTK_WINDOW(win), _arc_update_popup);
@@ -2826,6 +2844,7 @@ static void switch_to_prev_tab(FmMainWin* win)
     gtk_notebook_set_current_page(win->notebook, n);
 }
 
+
 static gboolean on_key_press_event(GtkWidget* w, GdkEventKey* evt)
 {
     FmMainWin* win = FM_MAIN_WIN(w);
@@ -2835,6 +2854,8 @@ static gboolean on_key_press_event(GtkWidget* w, GdkEventKey* evt)
 /* Shorthand for this function only */
 #define KM(sec, act, dkv, dmod) \
     _key_matches((sec), (act), (dkv), (dmod), keyval, modifier)
+
+    /* ── Universal: new tab ── Ctrl+t */
 
     /* ── Universal: new tab ── Ctrl+t */
     if (KM("universal", "new_tab", GDK_KEY_t, GDK_CONTROL_MASK))
@@ -2927,80 +2948,6 @@ static gboolean on_key_press_event(GtkWidget* w, GdkEventKey* evt)
         int n = (keyval == '0') ? 9 : (int)(keyval - '1');
         gtk_notebook_set_current_page(win->notebook, n);
         return TRUE;
-    }
-
-    /* ── View movement keys ─────────────────────────────────────────────
-     *
-     * Handled here at the GtkWindow level so GtkTreeView's typeahead
-     * search never sees them — the window key_press_event vfunc runs
-     * before any child widget's handler.
-     *
-     * Only fire when the path bar / search entry does NOT have focus.
-     */
-    if (!gtk_widget_is_focus(GTK_WIDGET(win->location)))
-    {
-        GtkWidget *inner = g_object_get_data(G_OBJECT(win->folder_view),
-                                             "rdfm-inner-widget");
-        if (inner) {
-            gboolean is_tree = GTK_IS_TREE_VIEW(inner);
-            gboolean is_icon = GTK_IS_ICON_VIEW(inner);
-
-            /* ── LIST VIEW ── */
-            if (is_tree) {
-                if (KM("list", "move_down",   GDK_KEY_j, 0)) {
-                    _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, 1);   return TRUE; }
-                if (KM("list", "move_up",     GDK_KEY_k, 0)) {
-                    _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, -1);  return TRUE; }
-                if (KM("list", "page_down",   GDK_KEY_d, GDK_CONTROL_MASK)) {
-                    _emit_move(inner, GTK_MOVEMENT_PAGES, 1);           return TRUE; }
-                if (KM("list", "page_up",     GDK_KEY_u, GDK_CONTROL_MASK)) {
-                    _emit_move(inner, GTK_MOVEMENT_PAGES, -1);          return TRUE; }
-                if (KM("list", "move_top",    GDK_KEY_g, 0)) {
-                    _emit_move(inner, GTK_MOVEMENT_BUFFER_ENDS, -1);    return TRUE; }
-                if (KM("list", "move_bottom", GDK_KEY_G, GDK_SHIFT_MASK)) {
-                    _emit_move(inner, GTK_MOVEMENT_BUFFER_ENDS, 1);     return TRUE; }
-                if (KM("list", "open",        GDK_KEY_l, 0)) {
-                    FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
-                    if (sel) {
-                        FmFileInfo *fi = fm_file_info_list_peek_head(sel);
-                        if (fi && fm_file_info_is_dir(fi))
-                            fm_main_win_chdir(win, fm_file_info_get_path(fi));
-                        fm_file_info_list_unref(sel);
-                    }
-                    return TRUE;
-                }
-                if (KM("universal", "go_back",   GDK_KEY_h,        0)) {
-                    on_go_back(NULL, win);  return TRUE; }
-                if (KM("universal", "go_parent", GDK_KEY_BackSpace, 0)) {
-                    on_go_up(NULL, win);    return TRUE; }
-                if (KM("universal", "go_home",   GDK_KEY_H, GDK_SHIFT_MASK)) {
-                    on_go_home(NULL, win);  return TRUE; }
-            }
-
-            /* ── ICON / COMPACT / THUMBNAIL VIEW ── */
-            if (is_icon) {
-                if (KM("icon", "move_down",  GDK_KEY_j, 0)) {
-                    _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES,    1);  return TRUE; }
-                if (KM("icon", "move_up",    GDK_KEY_k, 0)) {
-                    _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES,   -1);  return TRUE; }
-                if (KM("icon", "move_left",  GDK_KEY_h, 0)) {
-                    _emit_move(inner, GTK_MOVEMENT_VISUAL_POSITIONS, -1); return TRUE; }
-                if (KM("icon", "move_right", GDK_KEY_l, 0)) {
-                    _emit_move(inner, GTK_MOVEMENT_VISUAL_POSITIONS,  1); return TRUE; }
-                if (KM("icon", "page_down",  GDK_KEY_d, GDK_CONTROL_MASK)) {
-                    _emit_move(inner, GTK_MOVEMENT_PAGES, 1);             return TRUE; }
-                if (KM("icon", "page_up",    GDK_KEY_u, GDK_CONTROL_MASK)) {
-                    _emit_move(inner, GTK_MOVEMENT_PAGES, -1);            return TRUE; }
-                if (KM("universal", "go_back",    GDK_KEY_Left,  GDK_MOD1_MASK)) {
-                    on_go_back(NULL, win);   return TRUE; }
-                if (KM("universal", "go_forward", GDK_KEY_Right, GDK_MOD1_MASK)) {
-                    on_go_forward(NULL, win); return TRUE; }
-                if (KM("universal", "go_parent",  GDK_KEY_BackSpace, 0)) {
-                    on_go_up(NULL, win);     return TRUE; }
-                if (KM("universal", "go_home",    GDK_KEY_H, GDK_SHIFT_MASK)) {
-                    on_go_home(NULL, win);   return TRUE; }
-            }
-        }
     }
 
 #undef KM
