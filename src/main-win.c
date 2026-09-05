@@ -580,50 +580,65 @@ static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMa
     }
 
     /* ════════════════════════════════════════════════════════════════════
-     * LIST VIEW  (GtkTreeView)
+     * LIST VIEW  (ExoTreeView / GtkTreeView)
      * ════════════════════════════════════════════════════════════════════ */
     if (is_tree) {
-        /* j/k — up/down one row */
+        /* j/k — row down/up */
         if (_key_matches("list", "move_down", GDK_KEY_j, 0, keyval, modifier)) {
             _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, 1);  return TRUE;
         }
         if (_key_matches("list", "move_up", GDK_KEY_k, 0, keyval, modifier)) {
             _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, -1); return TRUE;
         }
-        /* Ctrl+d / Ctrl+u — half page down/up */
+        /* Ctrl+d / Ctrl+u — page down/up
+         * NOTE: Ctrl+D was unbound from AddBookmark (moved to Ctrl+B) */
         if (_key_matches("list", "page_down", GDK_KEY_d, GDK_CONTROL_MASK, keyval, modifier)) {
             _emit_move(inner, GTK_MOVEMENT_PAGES, 1);  return TRUE;
         }
         if (_key_matches("list", "page_up", GDK_KEY_u, GDK_CONTROL_MASK, keyval, modifier)) {
             _emit_move(inner, GTK_MOVEMENT_PAGES, -1); return TRUE;
         }
-        /* g / G — jump to top / bottom */
+        /* g — jump to top */
         if (_key_matches("list", "move_top", GDK_KEY_g, 0, keyval, modifier)) {
             _emit_move(inner, GTK_MOVEMENT_BUFFER_ENDS, -1); return TRUE;
         }
+        /* G — jump to bottom. Also disable typeahead that fires on Shift key. */
         if (_key_matches("list", "move_bottom", GDK_KEY_G, GDK_SHIFT_MASK, keyval, modifier)) {
-            _emit_move(inner, GTK_MOVEMENT_BUFFER_ENDS, 1);  return TRUE;
-        }
-        /* l — enter selected directory */
-        if (_key_matches("list", "open", GDK_KEY_l, 0, keyval, modifier)) {
-            FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
-            if (sel) {
-                FmFileInfo *fi = fm_file_info_list_peek_head(sel);
-                if (fi && fm_file_info_is_dir(fi))
-                    fm_main_win_chdir(win, fm_file_info_get_path(fi));
-                fm_file_info_list_unref(sel);
-            }
+            gtk_tree_view_set_enable_search(GTK_TREE_VIEW(inner), FALSE);
+            _emit_move(inner, GTK_MOVEMENT_BUFFER_ENDS, 1);
+            gtk_tree_view_set_enable_search(GTK_TREE_VIEW(inner), FALSE);
             return TRUE;
         }
-        /* h — go back in history */
+        /* l — enter selected directory (only if a dir is selected) */
+        if (_key_matches("list", "open", GDK_KEY_l, 0, keyval, modifier)) {
+            FmFileInfoList *sel = fm_folder_view_dup_selected_files(win->folder_view);
+            gboolean handled = FALSE;
+            if (sel) {
+                FmFileInfo *fi = fm_file_info_list_peek_head(sel);
+                if (fi && fm_file_info_is_dir(fi)) {
+                    fm_main_win_chdir(win, fm_file_info_get_path(fi));
+                    handled = TRUE;
+                }
+                fm_file_info_list_unref(sel);
+            }
+            return handled ? TRUE : FALSE;
+        }
+        /* / — focus path bar for directory search */
+        if (modifier == 0 && keyval == GDK_KEY_slash) {
+            gtk_widget_grab_focus(GTK_WIDGET(win->location));
+            gtk_entry_set_text(GTK_ENTRY(win->location), "/");
+            gtk_editable_set_position(GTK_EDITABLE(win->location), -1);
+            return TRUE;
+        }
+        /* h — back in history */
         if (_key_matches("universal", "go_back", GDK_KEY_h, 0, keyval, modifier)) {
             on_go_back(NULL, win); return TRUE;
         }
-        /* BackSpace — go up one level */
+        /* BackSpace — up one level */
         if (_key_matches("universal", "go_parent", GDK_KEY_BackSpace, 0, keyval, modifier)) {
             on_go_up(NULL, win); return TRUE;
         }
-        /* Shift+H — go home */
+        /* Shift+H — home */
         if (_key_matches("universal", "go_home", GDK_KEY_H, GDK_SHIFT_MASK, keyval, modifier)) {
             on_go_home(NULL, win); return TRUE;
         }
@@ -631,20 +646,17 @@ static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMa
     }
 
     /* ════════════════════════════════════════════════════════════════════
-     * ICON / COMPACT / THUMBNAIL VIEW  (GtkIconView)
-     *
-     * h/l = grid left/right here, so go_back/go_forward use Alt+Left/Right
-     * (browser-style) which don't conflict with any icon-view internals.
+     * ICON / COMPACT / THUMBNAIL VIEW  (ExoIconView)
      * ════════════════════════════════════════════════════════════════════ */
     if (is_icon) {
-        /* j/k — down/up one row in the grid */
+        /* j/k — grid row down/up */
         if (_key_matches("icon", "move_down", GDK_KEY_j, 0, keyval, modifier)) {
             _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, 1);  return TRUE;
         }
         if (_key_matches("icon", "move_up", GDK_KEY_k, 0, keyval, modifier)) {
             _emit_move(inner, GTK_MOVEMENT_DISPLAY_LINES, -1); return TRUE;
         }
-        /* h/l — left/right one column in the grid */
+        /* h/l — grid column left/right */
         if (_key_matches("icon", "move_left", GDK_KEY_h, 0, keyval, modifier)) {
             _emit_move(inner, GTK_MOVEMENT_VISUAL_POSITIONS, -1); return TRUE;
         }
@@ -657,6 +669,13 @@ static gboolean on_view_key_press_event(GtkWidget* inner, GdkEventKey* evt, FmMa
         }
         if (_key_matches("icon", "page_up", GDK_KEY_u, GDK_CONTROL_MASK, keyval, modifier)) {
             _emit_move(inner, GTK_MOVEMENT_PAGES, -1); return TRUE;
+        }
+        /* / — focus path bar */
+        if (modifier == 0 && keyval == GDK_KEY_slash) {
+            gtk_widget_grab_focus(GTK_WIDGET(win->location));
+            gtk_entry_set_text(GTK_ENTRY(win->location), "/");
+            gtk_editable_set_position(GTK_EDITABLE(win->location), -1);
+            return TRUE;
         }
         /* Alt+Left / Alt+Right — history back/forward */
         if (_key_matches("universal", "go_back",

@@ -252,7 +252,7 @@ static GtkActionEntry main_win_actions[]=
     {"Connect", NULL, N_("_Connect to Server..."), NULL, N_("Open a window to choose remote folder location"), G_CALLBACK(on_go_connect)},
     {"Go", GTK_STOCK_JUMP_TO, NULL, NULL, N_("Go to the path in the location bar"), G_CALLBACK(on_go)},
     {"BookmarksMenu", NULL, N_("_Bookmarks"), NULL, NULL, NULL},
-    {"AddBookmark", GTK_STOCK_ADD, N_("_Add to Bookmarks..."), "<Ctrl>D", N_("Add current folder to bookmarks list"), G_CALLBACK(on_add_bookmark)},
+    {"AddBookmark", GTK_STOCK_ADD, N_("_Add to Bookmarks..."), "<Ctrl>B", N_("Add current folder to bookmarks list"), G_CALLBACK(on_add_bookmark)},
     {"ToolMenu", NULL, N_("Too_ls"), NULL, NULL, NULL},
     {"Term", "utilities-terminal", N_("Open Current Folder in _Terminal"), "F4", NULL, G_CALLBACK(on_open_in_terminal)},
     {"ArchiveMenu", "package-x-generic", N_("_Archive"), NULL, NULL, NULL},
